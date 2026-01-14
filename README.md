@@ -1,16 +1,18 @@
 WowSims Gear Helper
+![Version](https://img.shields.io/badge/version-0.0.1-blue)
 ===================
 
-![WowSims Gear Helper icon](WowSimsGearHelper_icon.png)
+
+<img src="WowSimsGearHelper_icon.png" alt="WowSims Gear Helper icon" width="128">
 
 World of Warcraft addon for Classic clients that helps you apply WowSims
-exports by showing what to change and guiding you through the steps.
+exports by showing what to change and guiding you through the steps ingame.
 
 Features
 --------
 - Import WowSims exports and build a gear plan.
 - Highlight sockets, enchants, and shopping needs.
-- Optional bag/character slot highlighting to guide actions.
+- Bag/character slot highlighting to guide actions.
 - Live shopping list updates as items are obtained.
 
 Supported Bag Addons
@@ -40,8 +42,8 @@ Report Bugs / Request Features
 ------------------------------
 Please use GitHub Issues and include as much context as possible.
 
-- Bug reports: `https://github.com/<owner>/<repo>/issues/new?template=bug_report.md`
-- Feature requests: `https://github.com/<owner>/<repo>/issues/new?template=feature_request.md`
+- Bug reports: `https://github.com/martinhoite/WowSimsGearHelper/issues/new?template=bug_report.md`
+- Feature requests: `https://github.com/martinhoite/WowSimsGearHelper/issues/new?template=feature_request.md`
 
 Development Notes
 -----------------
