@@ -42,19 +42,19 @@ Report Bugs / Request Features
 ------------------------------
 Please use GitHub Issues and include as much context as possible.
 
-- Bug reports: `https://github.com/martinhoite/WowSimsGearHelper/issues/new?template=bug_report.md`
-- Feature requests: `https://github.com/martinhoite/WowSimsGearHelper/issues/new?template=feature_request.md`
+- Bug reports: <https://github.com/martinhoite/WowSimsGearHelper/issues/new?template=bug_report.md>
+- Feature requests: <https://github.com/martinhoite/WowSimsGearHelper/issues/new?template=feature_request.md>
 
 Limitations
 -----------
 - Item upgrades are not handled.
-- Reforging is not handled. Use ReforgeLite: `https://www.curseforge.com/wow/addons/reforgelite`
+- Reforging is not handled. Use ReforgeLite: <https://www.curseforge.com/wow/addons/reforgelite>
 
 Attribution
 -----------
 WowSims Gear Helper is built to work with WowSims exports, huge thanks to the WowSims team and contributors.
-See the WowSims projects: `https://github.com/wowsims`
-This addon primarily focuses on the MoP version at this time, live here: `https://www.wowsims.com/mop`
+See the WowSims projects: <https://github.com/wowsims>
+This addon primarily focuses on the MoP version at this time, live here: <https://www.wowsims.com/mop>
 
 Development Notes
 -----------------
@@ -63,4 +63,4 @@ Development Notes
 
 License
 -------
-See `LICENSE`.
+See [LICENSE](LICENSE).
