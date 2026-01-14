@@ -1,0 +1,53 @@
+WowSims Gear Helper
+===================
+
+![WowSims Gear Helper icon](WowSimsGearHelper_icon.png)
+
+World of Warcraft addon for Classic clients that helps you apply WowSims
+exports by showing what to change and guiding you through the steps.
+
+Features
+--------
+- Import WowSims exports and build a gear plan.
+- Highlight sockets, enchants, and shopping needs.
+- Optional bag/character slot highlighting to guide actions.
+- Live shopping list updates as items are obtained.
+
+Supported Bag Addons
+--------------------
+- ElvUI Bags
+- ArkInventory
+- Baganator (single + category views)
+- Bagnon
+- BetterBags
+
+If your bag addon is not listed, open a feature request.
+
+Installation
+------------
+1) Download or clone this repository.
+2) Copy `WowSimsGearHelper` into:
+   `World of Warcraft/_classic_/Interface/AddOns/`
+3) Launch the game and enable the addon.
+
+Usage
+-----
+1) Open the addon with `/wsgh`.
+2) Click Import and paste your WowSims export JSON.
+3) Follow the guided steps for sockets, enchants, and items.
+
+Report Bugs / Request Features
+------------------------------
+Please use GitHub Issues and include as much context as possible.
+
+- Bug reports: `https://github.com/<owner>/<repo>/issues/new?template=bug_report.md`
+- Feature requests: `https://github.com/<owner>/<repo>/issues/new?template=feature_request.md`
+
+Development Notes
+-----------------
+- The addon targets Classic clients.
+- Integration points for bag addons live in `Integrations/BagAdapters.lua`.
+
+License
+-------
+See `LICENSE`.

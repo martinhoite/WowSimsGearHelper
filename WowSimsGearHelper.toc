@@ -1,0 +1,35 @@
+## Interface: 50502
+## Title: WowSims Gear Helper
+## Notes: Paste WowSims exports and guide gear changes with highlights and shopping lists.
+## Author: Blazz
+## Version: 0.0.1
+## SavedVariablesPerCharacter: WowSimsGearHelperDB
+
+Libs/Json.lua
+
+Constants.lua
+Data/Enchants.lua
+Util.lua
+
+Importers/WowSimsV2.lua
+Import.lua
+
+Scan/Equipped.lua
+Scan/Bags.lua
+Scan.lua
+
+Diff/Engine.lua
+Diff.lua
+
+Core.lua
+
+Integrations/BagAdapters.lua
+
+UI/Rows.lua
+UI/SocketHooks.lua
+UI/Highlight.lua
+UI/Minimap.lua
+UI/Shopping.lua
+UI/Settings.lua
+UI/ImportDialog.lua
+UI.lua
