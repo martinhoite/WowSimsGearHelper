@@ -3,7 +3,7 @@ _G.WowSimsGearHelper = WSGH
 WSGH.Diff = WSGH.Diff or {}
 WSGH.Diff.Engine = {}
 
-local ENABLE_TINKERS = false
+local ENABLE_TINKERS = true
 WSGH.Diff.Engine.ENABLE_TINKERS = ENABLE_TINKERS
 
 local function GetExpectedTinkerId(planSlot)
@@ -106,14 +106,17 @@ local function BuildEnchantTasksForSlot(planSlot, equippedSlot, bagIndex)
     local isTinker = WSGH.Data and WSGH.Data.Enchants and WSGH.Data.Enchants.IsTinkerSpell and WSGH.Data.Enchants.IsTinkerSpell(spellId)
     if taskType == "APPLY_TINKER" then
       manualOnly = true -- tinkers are applied manually, not via scroll
+      applyItemId = WSGH.Const.TINKERS_KIT_ITEM_ID
+      applyItemSource = "consumable"
+      locations = bagIndex and bagIndex[applyItemId] or nil
+    end
+    if isTinker then
+      haveEnchantId = tonumber(equippedSlot.tinkerId) or 0
     end
 
     local status = WSGH.Const.STATUS_OK
     if haveEnchantId ~= spellId then
       status = WSGH.Const.STATUS_WRONG
-      if isTinker then
-        status = WSGH.Const.STATUS_OK
-      end
       if applyItemId ~= 0 and (not locations or #locations == 0) then
         status = WSGH.Const.STATUS_MISSING
       end
@@ -187,8 +190,8 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
   local physicalSockets = tonumber(equippedSlot.socketCount) or 0
   local maxExpected = MaxExpectedSocketIndex(planSlot)
 
-  -- Belt edge case: when item data is cached poorly we may miss the buckle socket; if the plan expects more sockets, trust the plan for counting.
-  if slotMeta.slotId == 6 and maxExpected > physicalSockets then
+  -- Belt edge case: when a buckle is applied, item data can miss the extra socket.
+  if slotMeta.slotId == 6 and equippedSlot.hasBeltBuckle and maxExpected > physicalSockets then
     physicalSockets = maxExpected
   end
   -- Weapon sockets rely on reported stats; no extra overrides.

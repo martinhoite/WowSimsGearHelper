@@ -46,7 +46,7 @@ WSGH.Const.ICON_TINKER = "Interface\\Icons\\Trade_Engineering"
 -- Default tinker spellIds by slot (MoP defaults).
 WSGH.Const.DEFAULT_TINKERS = {
   [6] = 55016,   -- Belt: Nitro Boosts
-  [15] = 109076, -- Cloak: Goblin Glider
+  [15] = 126392, -- Cloak: Goblin Glider
   [10] = 126731, -- Gloves: Synapse Springs
 }
 WSGH.Const.HIGHLIGHT = {
@@ -61,6 +61,7 @@ WSGH.Const.HIGHLIGHT = {
 }
 
 WSGH.Const.ICON_EMPTY_SOCKET = "Interface\\ItemSocketingFrame\\UI-EmptySocket"
+WSGH.Const.TINKERS_KIT_ITEM_ID = 90146
 
 -- Limits
 WSGH.Const.MAX_SOCKETS_RENDER = 3
