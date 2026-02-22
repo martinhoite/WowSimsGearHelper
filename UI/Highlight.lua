@@ -298,6 +298,8 @@ local function ClearIndicator(parent)
     ClearHighlightStyle(parent)
     indicator:Hide()
     indicator.label:SetText("")
+    indicator.label:Hide()
+    if indicator.labelBg then indicator.labelBg:Hide() end
     if indicator.bg then indicator.bg:SetColorTexture(0, 0, 0, 0) end
     if indicator.status then indicator.status:Hide() end
   end
@@ -750,11 +752,35 @@ local function RefreshSocketHintHighlights()
         local indicator = CreateIndicator(btn)
         if indicator then
           ConfigureIndicatorForBag(indicator)
-          indicator.label:SetText("S")
+          if slotId then
+            indicator.label:SetText("S")
+            indicator.label:Show()
+            if indicator.labelBg then indicator.labelBg:Show() end
+          else
+            indicator.label:SetText("")
+            indicator.label:Hide()
+            if indicator.labelBg then indicator.labelBg:Hide() end
+          end
+          if indicator.bg then indicator.bg:SetColorTexture(0, 0, 0, 0) end
           indicator:Show()
           ApplyHighlightStyle(btn, "bag")
           hint.bagIndicators[btn] = true
         end
+      end
+    end
+    for btn in pairs(hint.bagIndicators) do
+      local indicator = btn and btn.WSGHIndicator or nil
+      if indicator then
+        if slotId then
+          indicator.label:SetText("S")
+          indicator.label:Show()
+          if indicator.labelBg then indicator.labelBg:Show() end
+        else
+          indicator.label:SetText("")
+          indicator.label:Hide()
+          if indicator.labelBg then indicator.labelBg:Hide() end
+        end
+        if indicator.bg then indicator.bg:SetColorTexture(0, 0, 0, 0) end
       end
     end
   else

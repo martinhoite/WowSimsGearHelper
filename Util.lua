@@ -57,6 +57,38 @@ function WSGH.Util.Print(msg)
   DEFAULT_CHAT_FRAME:AddMessage(("|cff33ff99WSGH|r: %s"):format(tostring(msg)))
 end
 
+function WSGH.Util.OpenBagsForGuidance()
+  local adapters = WSGH.UI and WSGH.UI.BagAdapters or nil
+  if adapters and adapters.AreBagFramesVisible and adapters.AreBagFramesVisible() then
+    return
+  end
+  if BetterBags_ToggleBags then
+    pcall(BetterBags_ToggleBags)
+    return
+  end
+  if OpenAllBags then
+    pcall(OpenAllBags)
+  elseif ToggleAllBags then
+    pcall(ToggleAllBags)
+  end
+end
+
+function WSGH.Util.Pluralize(count, singular, plural)
+  local n = tonumber(count) or 0
+  if n == 1 then
+    return tostring(singular or "")
+  end
+  if plural ~= nil then
+    return tostring(plural)
+  end
+  return tostring(singular or "") .. "s"
+end
+
+function WSGH.Util.FormatCountNoun(count, singular, plural)
+  local n = tonumber(count) or 0
+  return ("%d %s"):format(n, WSGH.Util.Pluralize(n, singular, plural))
+end
+
 -- Returns a coarse expansion key for the current client build.
 -- Keys match the data tables used elsewhere (e.g., "MOP", "CATA").
 function WSGH.Util.GetExpansionKey()
@@ -92,6 +124,12 @@ function WSGH.Util.GetPreferences()
   end
   if prefs.minimap.hide == nil then
     prefs.minimap.hide = false
+  end
+  if prefs.upgradeCurrency == nil then
+    prefs.upgradeCurrency = "JUSTICE"
+  end
+  if prefs.useValorForUpgrades == nil then
+    prefs.useValorForUpgrades = (prefs.upgradeCurrency == "VALOR")
   end
   WSGH.DB = _G.WowSimsGearHelperDB
   return prefs

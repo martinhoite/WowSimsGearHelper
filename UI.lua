@@ -71,18 +71,61 @@ local function ResetRuntimeState()
 end
 WSGH.UI.ResetRuntimeState = ResetRuntimeState
 
+local function FindNextPendingSocketTask(rowData)
+  if not rowData then return nil end
+  for _, task in ipairs(rowData.socketTasks or {}) do
+    if task and task.status ~= WSGH.Const.STATUS_OK then
+      return task
+    end
+  end
+  return nil
+end
+
+local function FindNextPendingEnchantTask(rowData)
+  if not rowData then return nil end
+  for _, task in ipairs(rowData.enchantTasks or {}) do
+    if task and task.status ~= WSGH.Const.STATUS_OK then
+      return task
+    end
+  end
+  return nil
+end
+
+local function HasPendingUpgradeTask(rowData)
+  if not rowData then return false end
+  for _, task in ipairs(rowData.upgradeTasks or {}) do
+    if task and task.status ~= WSGH.Const.STATUS_OK then
+      return true
+    end
+  end
+  return false
+end
+
+function WSGH.UI.GetRowActionPriority(rowData)
+  local nextSocketTask = FindNextPendingSocketTask(rowData)
+  local nextEnchantTask = FindNextPendingEnchantTask(rowData)
+  return {
+    nextSocketTask = nextSocketTask,
+    nextEnchantTask = nextEnchantTask,
+    hasSocketWork = nextSocketTask ~= nil,
+    hasEnchantWork = nextEnchantTask ~= nil,
+    hasUpgradeWork = HasPendingUpgradeTask(rowData),
+  }
+end
+
 local function DetermineNextAction(rowData)
   if not rowData or rowData.rowStatus ~= "NEEDS_WORK" then return nil end
-  if rowData.nextTask then
+  local priority = WSGH.UI.GetRowActionPriority(rowData)
+  if priority.nextSocketTask then
     return {
       type = "SOCKET_GEM",
-      task = rowData.nextTask,
+      task = priority.nextSocketTask,
     }
   end
-  if rowData.nextEnchantTask then
+  if priority.nextEnchantTask then
     return {
-      type = rowData.nextEnchantTask.type or "APPLY_ENCHANT",
-      task = rowData.nextEnchantTask,
+      type = priority.nextEnchantTask.type or "APPLY_ENCHANT",
+      task = priority.nextEnchantTask,
     }
   end
   return nil
@@ -154,22 +197,6 @@ local function OpenCharacterFrame()
     pcall(ShowUIPanel, CharacterFrame)
   end
   return CharacterFrame and CharacterFrame:IsShown()
-end
-
-local function OpenBagsForGuidance()
-  local adapters = WSGH.UI and WSGH.UI.BagAdapters or nil
-  if adapters and adapters.AreBagFramesVisible and adapters.AreBagFramesVisible() then
-    return
-  end
-  if BetterBags_ToggleBags then
-    pcall(BetterBags_ToggleBags)
-    return
-  end
-  if OpenAllBags then
-    pcall(OpenAllBags)
-  elseif ToggleAllBags then
-    pcall(ToggleAllBags)
-  end
 end
 
 local function GetEngineeringProfession()
@@ -464,7 +491,7 @@ local function ExecuteSocketAction(action)
   if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestBagRefresh then
     WSGH.UI.Highlight.RequestBagRefresh()
   end
-  OpenBagsForGuidance()
+  WSGH.Util.OpenBagsForGuidance()
 
   local opened = OpenSocketFrame(t.slotId)
   if not opened then
@@ -505,7 +532,7 @@ local function ExecuteEnchantAction(action)
     if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
       WSGH.UI.Highlight.RequestEnchantBagRefresh()
     end
-    OpenBagsForGuidance()
+    WSGH.Util.OpenBagsForGuidance()
     OpenCharacterFrame()
   end
 
@@ -535,7 +562,7 @@ local function ExecuteSocketHintAction(rowData)
     WSGH.UI.Highlight.SetSocketHintTarget(itemId, slotId, extraItemId)
   end
 
-  OpenBagsForGuidance()
+  WSGH.Util.OpenBagsForGuidance()
   OpenCharacterFrame()
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestBagRefresh then
@@ -693,6 +720,48 @@ local function UpdateShoppingList()
   WSGH.UI.Shopping.UpdateShoppingList()
 end
 
+local function HasEquippedSnapshotChanged()
+  local diff = WSGH.State and WSGH.State.diff
+  if not (diff and diff.rows) then return false end
+
+  for _, row in ipairs(diff.rows) do
+    local slotId = tonumber(row.slotId) or 0
+    if slotId ~= 0 then
+      local currentLink = GetInventoryItemLink("player", slotId)
+      local previousLink = row.equippedLink
+      if tostring(currentLink or "") ~= tostring(previousLink or "") then
+        return true
+      end
+    end
+  end
+
+  return false
+end
+
+local function HasUpgradeSnapshotChanged()
+  local diff = WSGH.State and WSGH.State.diff
+  if not (diff and diff.rows) then return false end
+  if not (WSGH.Scan and WSGH.Scan.Tooltip and WSGH.Scan.Tooltip.GetInventoryItemInfo) then
+    return false
+  end
+
+  for _, row in ipairs(diff.rows) do
+    local slotId = tonumber(row.slotId) or 0
+    if slotId ~= 0 then
+      local tooltipInfo = WSGH.Scan.Tooltip.GetInventoryItemInfo("player", slotId) or nil
+      local liveLevel = tooltipInfo and tonumber(tooltipInfo.upgradeLevel) or 0
+      local liveMax = tooltipInfo and tonumber(tooltipInfo.upgradeMax) or 0
+      local rowLevel = tonumber(row.equippedUpgradeLevel) or 0
+      local rowMax = tonumber(row.equippedUpgradeMax) or 0
+      if liveLevel ~= rowLevel or liveMax ~= rowMax then
+        return true
+      end
+    end
+  end
+
+  return false
+end
+
 local function ShowItemTooltip(frame, itemId)
   if not itemId or itemId == 0 then return end
   GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
@@ -842,6 +911,13 @@ local function OnEventDispatch(_, event, ...)
       WSGH.UI.Highlight.Refresh()
       if Guide.OnStateUpdated then Guide.OnStateUpdated() end
     end
+  elseif event == "CURRENCY_DISPLAY_UPDATE" then
+    if uiVisible and ItemUpgradeFrame and ItemUpgradeFrame:IsShown() then
+      return
+    end
+    if uiVisible and WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateShoppingList then
+      WSGH.UI.Shopping.UpdateShoppingList()
+    end
   elseif event == "SOCKET_INFO_UPDATE" then
     if WSGH.State.plan then
       BuildDiffAndRender()
@@ -864,6 +940,7 @@ RegisterUIEvents = function()
   WSGH.UI.eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
   WSGH.UI.eventFrame:RegisterEvent("SOCKET_INFO_UPDATE")
   WSGH.UI.eventFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+  WSGH.UI.eventFrame:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
   WSGH.UI.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
   WSGH.UI.eventFrame:SetScript("OnEvent", OnEventDispatch)
 end
@@ -919,6 +996,33 @@ local function EquipExpectedItem(rowData)
   WSGH.Util.Print("Expected item not in bags.")
 end
 
+local function TryInsertEquippedItemIntoItemUpgradeFrame(slotId)
+  slotId = tonumber(slotId) or 0
+  if slotId == 0 then return false end
+  if not (ItemUpgradeFrame and ItemUpgradeFrame:IsShown()) then
+    return false
+  end
+  if not (PickupInventoryItem and ItemUpgradeFrame.ItemButton and ItemUpgradeFrame.ItemButton.Click) then
+    return false
+  end
+
+  if ClearCursor then
+    pcall(ClearCursor)
+  end
+  pcall(PickupInventoryItem, slotId)
+
+  if CursorHasItem and not CursorHasItem() then
+    return false
+  end
+
+  pcall(ItemUpgradeFrame.ItemButton.Click, ItemUpgradeFrame.ItemButton)
+  local consumed = not (CursorHasItem and CursorHasItem())
+  if not consumed and ClearCursor then
+    pcall(ClearCursor)
+  end
+  return consumed
+end
+
 local function OnRowAction(rowData)
   if not rowData then return end
   if rowData.rowStatus == "WRONG_ITEM" then
@@ -931,6 +1035,38 @@ local function OnRowAction(rowData)
       return
     end
     ExecuteSocketHintAction(rowData)
+    return
+  end
+  local priority = WSGH.UI.GetRowActionPriority(rowData)
+  if priority.hasUpgradeWork and not priority.hasSocketWork and not priority.hasEnchantWork then
+    local itemName = GetItemInfo(rowData.expectedItemId or 0) or rowData.slotKey or "item"
+    local current = tonumber(rowData.equippedUpgradeLevel) or 0
+    local target = tonumber(rowData.expectedUpgradeStep) or 0
+    local maxStep = tonumber(rowData.equippedUpgradeMax) or 0
+    if maxStep <= 0 then
+      maxStep = math.max(2, target)
+    end
+    if target > maxStep then
+      target = maxStep
+    end
+    local inserted = TryInsertEquippedItemIntoItemUpgradeFrame(rowData.slotId)
+    if inserted then
+      WSGH.Util.Print(("Inserted %s into the upgrader (%d/%d -> %d/%d)."):format(
+        tostring(itemName),
+        current,
+        maxStep,
+        target,
+        maxStep
+      ))
+      return
+    end
+    WSGH.Util.Print(("Upgrade needed for %s: %d/%d -> %d/%d. Visit the Item Upgrader NPC."):format(
+      tostring(itemName),
+      current,
+      maxStep,
+      target,
+      maxStep
+    ))
     return
   end
   Guide.StartForRow(rowData)
@@ -1114,7 +1250,6 @@ function WSGH.UI.Init()
 
     entry.text = entry:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     entry.text:SetPoint("LEFT", entry.icon, "RIGHT", 6, 0)
-    entry.text:SetPoint("RIGHT", entry, "RIGHT", -80, 0)
     entry.text:SetJustifyH("LEFT")
     entry.text:SetWordWrap(false)
 
@@ -1150,6 +1285,15 @@ function WSGH.UI.Init()
     entry.count = entry:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     entry.count:SetPoint("RIGHT", entry.search, "LEFT", -6, 0)
     entry.count:SetJustifyH("RIGHT")
+
+    entry.countIcon = CreateFrame("Button", nil, entry)
+    entry.countIcon:SetSize(14, 14)
+    entry.countIcon:SetPoint("RIGHT", entry.search, "LEFT", -6, 0)
+    entry.countIcon.texture = entry.countIcon:CreateTexture(nil, "ARTWORK")
+    entry.countIcon.texture:SetAllPoints()
+    entry.countIcon:Hide()
+
+    entry.text:SetPoint("RIGHT", entry.count, "LEFT", -8, 0)
     entry:SetScript("OnEnter", function(self)
       if self.itemId then ShowItemTooltip(self, self.itemId) end
     end)
@@ -1201,6 +1345,22 @@ function WSGH.UI.Init()
   WSGH.UI.eventFrame = CreateFrame("Frame")
   WSGH.UI.eventFrame:SetFrameStrata("DIALOG")
   WSGH.UI.eventFrame:SetScript("OnEvent", OnEventDispatch)
+  WSGH.UI.eventFrame.pollElapsed = 0
+  WSGH.UI.eventFrame:SetScript("OnUpdate", function(self, elapsed)
+    self.pollElapsed = (tonumber(self.pollElapsed) or 0) + (tonumber(elapsed) or 0)
+    if self.pollElapsed < 1.0 then return end
+    self.pollElapsed = 0
+
+    if not (WSGH.UI.frame and WSGH.UI.frame:IsShown()) then return end
+    if not WSGH.State or not WSGH.State.plan then return end
+
+    -- Some item changes (notably upgrades) may not fire equipment/bag events on all clients.
+    -- Poll for equipped-link and tooltip-upgrade changes while UI is open.
+    if HasEquippedSnapshotChanged() or HasUpgradeSnapshotChanged() then
+      BuildDiffAndRender()
+      if Guide.OnStateUpdated then Guide.OnStateUpdated() end
+    end
+  end)
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.InitializeHooks then
     WSGH.UI.Highlight.InitializeHooks()

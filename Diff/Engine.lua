@@ -16,6 +16,37 @@ local function GetExpectedTinkerId(planSlot)
   return tinkerId
 end
 
+local function GetExpectedUpgradeStep(planSlot)
+  if not planSlot then return 0 end
+
+  local numeric = tonumber(planSlot.expectedUpgradeStep)
+  if numeric then
+    if numeric < 0 then return 0 end
+    if numeric > 2 then return 2 end
+    return numeric
+  end
+
+  local raw = planSlot.upgradeStep
+  if type(raw) == "number" then
+    local n = tonumber(raw) or 0
+    if n < 0 then return 0 end
+    if n > 2 then return 2 end
+    return n
+  end
+  if type(raw) ~= "string" then
+    return 0
+  end
+
+  local normalized = raw:gsub("%s+", ""):lower()
+  if normalized == "upgradestepone" then return 1 end
+  if normalized == "upgradesteptwo" then return 2 end
+
+  local trailingNumber = tonumber(normalized:match("(%d+)$")) or 0
+  if trailingNumber <= 0 then return 0 end
+  if trailingNumber > 2 then return 2 end
+  return trailingNumber
+end
+
 local function BuildSocketTasksForSlot(planSlot, equippedSlot, bagIndex)
   local tasks = {}
 
@@ -151,6 +182,54 @@ local function BuildEnchantTasksForSlot(planSlot, equippedSlot, bagIndex)
   return tasks
 end
 
+local function BuildUpgradeTasksForSlot(planSlot, equippedSlot)
+  local tasks = {}
+
+  local expectedItemId = tonumber(planSlot.expectedItemId) or 0
+  local equippedItemId = tonumber(equippedSlot.itemId) or 0
+  local expectedUpgradeStep = GetExpectedUpgradeStep(planSlot)
+  local currentUpgradeLevel = tonumber(equippedSlot.upgradeLevel) or 0
+  local currentUpgradeMax = tonumber(equippedSlot.upgradeMax) or 0
+
+  if expectedItemId == 0 or equippedItemId ~= expectedItemId then
+    return tasks
+  end
+  if expectedUpgradeStep <= 0 then
+    return tasks
+  end
+
+  if currentUpgradeLevel < 0 then currentUpgradeLevel = 0 end
+  if currentUpgradeMax < 0 then currentUpgradeMax = 0 end
+
+  local targetUpgradeStep = expectedUpgradeStep
+  if currentUpgradeMax > 0 then
+    targetUpgradeStep = math.min(targetUpgradeStep, currentUpgradeMax)
+  end
+
+  local remaining = targetUpgradeStep - currentUpgradeLevel
+  if remaining <= 0 then
+    return tasks
+  end
+
+  for step = currentUpgradeLevel + 1, targetUpgradeStep do
+    tasks[#tasks + 1] = {
+      type = "UPGRADE_ITEM",
+      slotId = planSlot.slotId,
+      slotKey = planSlot.slotKey,
+      itemId = equippedItemId,
+      expectedUpgradeStep = expectedUpgradeStep,
+      targetUpgradeStep = targetUpgradeStep,
+      haveUpgradeStep = currentUpgradeLevel,
+      wantUpgradeStep = step,
+      upgradeMax = currentUpgradeMax,
+      remainingSteps = remaining,
+      status = WSGH.Const.STATUS_WRONG,
+    }
+  end
+
+  return tasks
+end
+
 local function ComputeSocketCount(planSlot, equippedSlot)
   local count = tonumber(equippedSlot.socketCount) or 0
   local maxIndex = count
@@ -240,7 +319,7 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
   return { text = ("Add an extra socket (plan has %d, item has %d)"):format(maxExpected, physicalSockets), itemId = nil, missing = missingSockets }
 end
 
-local function ComputeRowStatus(planSlot, equippedSlot, socketTasks, enchantTasks)
+local function ComputeRowStatus(planSlot, equippedSlot, socketTasks, enchantTasks, upgradeTasks)
   local expectedItemId = tonumber(planSlot.expectedItemId) or 0
   local equippedItemId = tonumber(equippedSlot.itemId) or 0
 
@@ -255,6 +334,12 @@ local function ComputeRowStatus(planSlot, equippedSlot, socketTasks, enchantTask
   end
 
   for _, t in ipairs(enchantTasks) do
+    if t.status ~= WSGH.Const.STATUS_OK then
+      return "NEEDS_WORK"
+    end
+  end
+
+  for _, t in ipairs(upgradeTasks or {}) do
     if t.status ~= WSGH.Const.STATUS_OK then
       return "NEEDS_WORK"
     end
@@ -354,7 +439,8 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
     if planSlot and eqSlot then
       local socketTasks = BuildSocketTasksForSlot(planSlot, eqSlot, bagIndex)
       local enchantTasks = BuildEnchantTasksForSlot(planSlot, eqSlot, bagIndex)
-      local rowStatus = ComputeRowStatus(planSlot, eqSlot, socketTasks, enchantTasks)
+      local upgradeTasks = BuildUpgradeTasksForSlot(planSlot, eqSlot)
+      local rowStatus = ComputeRowStatus(planSlot, eqSlot, socketTasks, enchantTasks, upgradeTasks)
       local nextTask = NextSocketTask(socketTasks)
       local nextEnchantTask = NextEnchantTask(enchantTasks)
       local computedSocketCount = ComputeSocketCount(planSlot, eqSlot)
@@ -370,6 +456,11 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
         end
       end
       for _, t in ipairs(enchantTasks) do
+        if t.status ~= WSGH.Const.STATUS_OK then
+          result.tasks[#result.tasks + 1] = t
+        end
+      end
+      for _, t in ipairs(upgradeTasks) do
         if t.status ~= WSGH.Const.STATUS_OK then
           result.tasks[#result.tasks + 1] = t
         end
@@ -390,6 +481,11 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
         enchantTasks = enchantTasks,
         nextEnchantTask = nextEnchantTask,
         enchantDisplays = enchantDisplays,
+        upgradeTasks = upgradeTasks,
+        upgradeStep = planSlot.upgradeStep,
+        expectedUpgradeStep = GetExpectedUpgradeStep(planSlot),
+        equippedUpgradeLevel = tonumber(eqSlot.upgradeLevel) or 0,
+        equippedUpgradeMax = tonumber(eqSlot.upgradeMax) or 0,
         socketTasks = socketTasks,
         nextTask = nextTask,
         socketCount = computedSocketCount,
@@ -431,12 +527,29 @@ function WSGH.Debug.DumpDiffRow(slotId)
         tostring(row.socketHintItemId),
         tostring(row.socketHintText)
       ))
+      WSGH.Util.Print(("Upgrade: expected=%s (raw=%s) equipped=%s/%s upgradeTasks=%d"):format(
+        tostring(row.expectedUpgradeStep),
+        tostring(row.upgradeStep),
+        tostring(row.equippedUpgradeLevel),
+        tostring(row.equippedUpgradeMax),
+        row.upgradeTasks and #row.upgradeTasks or 0
+      ))
       if row.socketTasks then
         for _, t in ipairs(row.socketTasks) do
           WSGH.Util.Print(("[%d] want=%s have=%s status=%s"):format(
             tonumber(t.socketIndex) or 0,
             tostring(t.wantGemId),
             tostring(t.haveGemId),
+            tostring(t.status)
+          ))
+        end
+      end
+      if row.upgradeTasks then
+        for _, t in ipairs(row.upgradeTasks) do
+          WSGH.Util.Print(("Upgrade task: have=%s want=%s target=%s status=%s"):format(
+            tostring(t.haveUpgradeStep),
+            tostring(t.wantUpgradeStep),
+            tostring(t.targetUpgradeStep),
             tostring(t.status)
           ))
         end

@@ -64,6 +64,39 @@ local function SocketHintDescription(rowData)
   return desc
 end
 
+local function UpgradeProgressText(rowData)
+  if not rowData or rowData.rowStatus == "WRONG_ITEM" then return nil end
+  local expected = tonumber(rowData and rowData.expectedUpgradeStep)
+  if not expected then
+    local raw = rowData and rowData.upgradeStep
+    if type(raw) == "number" then
+      expected = tonumber(raw) or 0
+    elseif type(raw) == "string" then
+      local normalized = raw:gsub("%s+", ""):lower()
+      if normalized == "upgradestepone" then
+        expected = 1
+      elseif normalized == "upgradesteptwo" then
+        expected = 2
+      else
+        expected = tonumber(normalized:match("(%d+)$")) or 0
+      end
+    else
+      expected = 0
+    end
+  end
+  if expected <= 0 then return nil end
+
+  local current = tonumber(rowData.equippedUpgradeLevel) or 0
+  local maxStep = tonumber(rowData.equippedUpgradeMax) or 0
+  if maxStep <= 0 then
+    maxStep = math.max(2, expected)
+  end
+  if current < 0 then current = 0 end
+  if current > maxStep then current = maxStep end
+
+  return ("(%d/%d)"):format(current, maxStep)
+end
+
 function WSGH.UI.Rows.Create(parent)
   local rowHeight = WSGH.Const.UI.rowHeight
   local socketSize = WSGH.Const.UI.socketSize
@@ -223,7 +256,11 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   local hasSocketWork = false
   local hasEnchantWork = false
   local hasTinkerWork = false
+  local hasUpgradeWork = false
+  local pendingUpgradeCount = 0
   local hasManualOnlyEnchant = false
+  local hasManualEnchantWork = false
+  local hasManualTinkerWork = false
   for _, task in ipairs(rowData.socketTasks or {}) do
     if task.status ~= WSGH.Const.STATUS_OK then
       hasSocketWork = true
@@ -239,9 +276,26 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       end
       if task.manualOnly then
         hasManualOnlyEnchant = true
+        if task.type == "APPLY_TINKER" then
+          hasManualTinkerWork = true
+        else
+          hasManualEnchantWork = true
+        end
       end
     end
   end
+  for _, task in ipairs(rowData.upgradeTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then
+      hasUpgradeWork = true
+      pendingUpgradeCount = pendingUpgradeCount + 1
+    end
+  end
+  local upgradeNoun = WSGH.Util.Pluralize(pendingUpgradeCount, "upgrade")
+  local priority = WSGH.UI and WSGH.UI.GetRowActionPriority and WSGH.UI.GetRowActionPriority(rowData) or nil
+  local hasPrioritySocket = priority and priority.hasSocketWork or hasSocketWork
+  local hasPriorityAnyEnchant = priority and priority.hasEnchantWork or (hasEnchantWork or hasTinkerWork)
+  local hasPriorityUpgrade = priority and priority.hasUpgradeWork or hasUpgradeWork
+  local nextPriorityEnchantTask = priority and priority.nextEnchantTask or nil
 
   local statusText = rowData.rowStatus
   if rowData.rowStatus == "WRONG_ITEM" then
@@ -256,16 +310,32 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
     local needsEnchantOrTinker = hasEnchantWork or hasTinkerWork
     if hasSocketWork and needsEnchantOrTinker then
       if hasTinkerWork and not hasEnchantWork then
-        statusText = "Needs gems and tinker"
+        if hasUpgradeWork then
+          statusText = ("Needs gems, tinker, and %s"):format(upgradeNoun)
+        else
+          statusText = "Needs gems and tinker"
+        end
       elseif hasEnchantWork and not hasTinkerWork then
-        statusText = "Needs gems and enchant"
+        if hasUpgradeWork then
+          statusText = ("Needs gems, enchant, and %s"):format(upgradeNoun)
+        else
+          statusText = "Needs gems and enchant"
+        end
       else
-        statusText = "Needs gems and enchant/tinker"
+        if hasUpgradeWork then
+          statusText = ("Needs gems, enchant, tinker, and %s"):format(upgradeNoun)
+        else
+          statusText = "Needs gems and enchant, tinker"
+        end
       end
+    elseif hasSocketWork and hasUpgradeWork then
+      statusText = ("Needs gems and %s"):format(upgradeNoun)
     elseif hasTinkerWork and not hasEnchantWork then
       statusText = "Needs tinker"
     elseif hasEnchantWork then
       statusText = "Needs enchant"
+    elseif hasUpgradeWork then
+      statusText = ("Needs %s"):format(upgradeNoun)
     elseif hasSocketWork then
       statusText = "Needs gems"
     else
@@ -275,7 +345,6 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   if rowData.socketHintText then
     statusText = SocketHintDescription(rowData)
   end
-
   rowFrame.subtitle:SetText(statusText)
 
   local enchantDisplays = rowData.enchantDisplays or {}
@@ -454,26 +523,43 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         GameTooltip:Show()
       end)
       rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
-    elseif (hasEnchantWork or hasTinkerWork) and not hasSocketWork then
+    elseif hasPrioritySocket then
       rowFrame.action:SetEnabled(true)
-      if hasTinkerWork and not hasEnchantWork then
-        rowFrame.action:SetText("Tinker")
-      elseif hasEnchantWork and not hasTinkerWork then
-        rowFrame.action:SetText("Enchant")
-      else
-        rowFrame.action:SetText("Enchant/Tinker")
-      end
+      rowFrame.action:SetText("Socket")
+      rowFrame.action:SetScript("OnEnter", nil)
+      rowFrame.action:SetScript("OnLeave", nil)
+    elseif hasPriorityAnyEnchant and not hasPrioritySocket then
+      rowFrame.action:SetEnabled(true)
+      local nextIsTinker = nextPriorityEnchantTask and nextPriorityEnchantTask.type == "APPLY_TINKER"
+      local nextManual = nextPriorityEnchantTask and nextPriorityEnchantTask.manualOnly == true
+      rowFrame.action:SetText(nextIsTinker and "Tinker" or "Enchant")
       rowFrame.action:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if hasManualOnlyEnchant then
-          GameTooltip:SetText("Apply the expected enchant/tinker manually (no scroll available).")
+        if nextIsTinker then
+          GameTooltip:SetText("Apply the expected tinker manually.")
         else
-          if hasTinkerWork and not hasEnchantWork then
-            GameTooltip:SetText("Apply the expected tinker manually.")
+          if nextManual then
+            GameTooltip:SetText("Apply the expected enchant manually (no scroll available).")
           else
             GameTooltip:SetText("Apply the expected enchant using a vellum.")
           end
         end
+        GameTooltip:Show()
+      end)
+      rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
+    elseif hasPriorityUpgrade and not hasPriorityAnyEnchant then
+      rowFrame.action:SetEnabled(true)
+      rowFrame.action:SetText("Upgrade")
+      rowFrame.action:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local expected = tonumber(rowData.expectedUpgradeStep) or 0
+        local firstTask = rowData.upgradeTasks and rowData.upgradeTasks[1] or nil
+        local targetStep = firstTask and tonumber(firstTask.targetUpgradeStep) or expected
+        local currentStep = tonumber(rowData.equippedUpgradeLevel) or 0
+        local maxStep = tonumber(rowData.equippedUpgradeMax) or 0
+        if maxStep <= 0 then maxStep = math.max(2, targetStep) end
+        GameTooltip:SetText(("Upgrade this (%d/%d -> %d/%d)."):format(currentStep, maxStep, targetStep, maxStep))
+        GameTooltip:AddLine("Use the Item Upgrader NPC in your faction shrine.", 1, 0.82, 0.2, true)
         GameTooltip:Show()
       end)
       rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)

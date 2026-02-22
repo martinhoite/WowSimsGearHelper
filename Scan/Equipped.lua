@@ -83,6 +83,8 @@ function WSGH.Scan.Equipped.GetState()
     local itemLevel = 0
     local tooltipSocketCount = 0
     local tooltipTinkerId = 0
+    local tooltipUpgradeLevel = 0
+    local tooltipUpgradeMax = 0
 
     if link then
       local stats = GetItemStats(link) or {}
@@ -108,6 +110,8 @@ function WSGH.Scan.Equipped.GetState()
       if tooltipInfo then
         tooltipSocketCount = tonumber(tooltipInfo.socketCount) or 0
         tooltipTinkerId = tonumber(tooltipInfo.tinkerId) or 0
+        tooltipUpgradeLevel = tonumber(tooltipInfo.upgradeLevel) or 0
+        tooltipUpgradeMax = tonumber(tooltipInfo.upgradeMax) or 0
       end
 
       local entry = {
@@ -123,6 +127,8 @@ function WSGH.Scan.Equipped.GetState()
         itemLevel = itemLevel,
         tooltipSocketCount = tooltipSocketCount,
         tinkerId = tooltipTinkerId,
+        upgradeLevel = tooltipUpgradeLevel,
+        upgradeMax = tooltipUpgradeMax,
         hasBeltBuckle = false,
       }
       for _ in pairs(parsed.gemsByIndex or {}) do
@@ -148,6 +154,8 @@ function WSGH.Scan.Equipped.GetState()
         hasBeltBuckle = false,
         tooltipSocketCount = 0,
         tinkerId = 0,
+        upgradeLevel = 0,
+        upgradeMax = 0,
       }
     end
   end
@@ -205,6 +213,8 @@ function WSGH.Debug.DumpSlot(slotId)
   local tooltipInfo = WSGH.Scan.Tooltip and WSGH.Scan.Tooltip.GetInventoryItemInfo and WSGH.Scan.Tooltip.GetInventoryItemInfo("player", slotId) or nil
   local tooltipSocketCount = tooltipInfo and tonumber(tooltipInfo.socketCount) or 0
   local tooltipTinkerId = tooltipInfo and tonumber(tooltipInfo.tinkerId) or 0
+  local tooltipUpgradeLevel = tooltipInfo and tonumber(tooltipInfo.upgradeLevel) or 0
+  local tooltipUpgradeMax = tooltipInfo and tonumber(tooltipInfo.upgradeMax) or 0
 
   WSGH.Util.Print(("DumpSlot %d: itemId=%d enchantId=%d link=%s"):format(slotId, itemId, enchantId, link))
   WSGH.Util.Print(("Gems from link: %d, %d, %d, %d"):format(gems[1], gems[2], gems[3], gems[4]))
@@ -218,6 +228,7 @@ function WSGH.Debug.DumpSlot(slotId)
   ))
   WSGH.Util.Print(("Tooltip sockets: %d"):format(tooltipSocketCount))
   WSGH.Util.Print(("Tooltip tinkerId: %d"):format(tooltipTinkerId))
+  WSGH.Util.Print(("Tooltip upgrade: %d/%d"):format(tooltipUpgradeLevel, tooltipUpgradeMax))
   WSGH.Util.Print(("Item level: %d"):format(itemLevel))
   for stat, value in pairs(stats) do
     if type(stat) == "string" and stat:find("SOCKET") then
