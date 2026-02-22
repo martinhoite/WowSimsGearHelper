@@ -396,14 +396,28 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
 
   if rowData.socketHintText then
     rowFrame.action:SetText("Add socket")
-    rowFrame.action:SetEnabled(false)
-    rowFrame.action:SetScript("OnEnter", function(self)
-      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(SocketHintDescription(rowData), nil, nil, nil, nil, true)
-      GameTooltip:Show()
-    end)
-    rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
-    rowFrame.action:SetScript("OnClick", nil)
+    local hintItemId = tonumber(rowData.socketHintItemId) or 0
+    local extraItemId = tonumber(rowData.socketHintExtraItemId) or 0
+    local missingHintItem = hintItemId ~= 0 and not HasItemInBags(hintItemId)
+    local missingExtraItem = extraItemId ~= 0 and not HasItemInBags(extraItemId)
+    if missingHintItem or missingExtraItem then
+      rowFrame.action:SetEnabled(false)
+      rowFrame.action:SetText("Purchase")
+      rowFrame.action:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Purchase required items first.")
+        GameTooltip:Show()
+      end)
+      rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
+    else
+      rowFrame.action:SetEnabled(true)
+      rowFrame.action:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(SocketHintDescription(rowData), nil, nil, nil, nil, true)
+        GameTooltip:Show()
+      end)
+      rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
+    end
   elseif rowData.rowStatus == "OK" then
     rowFrame.action:SetEnabled(false)
     rowFrame.action:SetText("Done")

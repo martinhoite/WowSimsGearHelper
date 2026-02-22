@@ -164,6 +164,9 @@ events:SetScript("OnEvent", function(_, event, name)
       WSGH.UI.Settings.Initialize()
     end
     WSGH.UI.Init()
+    if WSGH.Scan and WSGH.Scan.Tooltip and WSGH.Scan.Tooltip.Initialize then
+      WSGH.Scan.Tooltip.Initialize()
+    end
     if WSGH.UI and WSGH.UI.Minimap and WSGH.UI.Minimap.Initialize then
       WSGH.UI.Minimap.Initialize()
     end

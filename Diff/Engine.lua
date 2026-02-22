@@ -3,7 +3,7 @@ _G.WowSimsGearHelper = WSGH
 WSGH.Diff = WSGH.Diff or {}
 WSGH.Diff.Engine = {}
 
-local ENABLE_TINKERS = false
+local ENABLE_TINKERS = true
 WSGH.Diff.Engine.ENABLE_TINKERS = ENABLE_TINKERS
 
 local function GetExpectedTinkerId(planSlot)
@@ -106,14 +106,17 @@ local function BuildEnchantTasksForSlot(planSlot, equippedSlot, bagIndex)
     local isTinker = WSGH.Data and WSGH.Data.Enchants and WSGH.Data.Enchants.IsTinkerSpell and WSGH.Data.Enchants.IsTinkerSpell(spellId)
     if taskType == "APPLY_TINKER" then
       manualOnly = true -- tinkers are applied manually, not via scroll
+      applyItemId = WSGH.Const.TINKERS_KIT_ITEM_ID
+      applyItemSource = "consumable"
+      locations = bagIndex and bagIndex[applyItemId] or nil
+    end
+    if isTinker then
+      haveEnchantId = tonumber(equippedSlot.tinkerId) or 0
     end
 
     local status = WSGH.Const.STATUS_OK
     if haveEnchantId ~= spellId then
       status = WSGH.Const.STATUS_WRONG
-      if isTinker then
-        status = WSGH.Const.STATUS_OK
-      end
       if applyItemId ~= 0 and (not locations or #locations == 0) then
         status = WSGH.Const.STATUS_MISSING
       end
@@ -187,8 +190,8 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
   local physicalSockets = tonumber(equippedSlot.socketCount) or 0
   local maxExpected = MaxExpectedSocketIndex(planSlot)
 
-  -- Belt edge case: when item data is cached poorly we may miss the buckle socket; if the plan expects more sockets, trust the plan for counting.
-  if slotMeta.slotId == 6 and maxExpected > physicalSockets then
+  -- Belt edge case: when a buckle is applied, item data can miss the extra socket.
+  if slotMeta.slotId == 6 and equippedSlot.hasBeltBuckle and maxExpected > physicalSockets then
     physicalSockets = maxExpected
   end
   -- Weapon sockets rely on reported stats; no extra overrides.
@@ -296,8 +299,8 @@ local function BuildEnchantDisplays(planSlot, enchantTasks)
       icon = opts.icon or (info and info.icon) or (opts.isTinker and WSGH.Const.ICON_TINKER or WSGH.Const.ICON_ENCHANT),
       status = WSGH.Const.STATUS_OK,
       manualOnly = opts.manualOnly or false,
-      itemId = infoItemId or 0,
-      itemSource = infoItemSource,
+      itemId = opts.isTinker and 0 or (infoItemId or 0),
+      itemSource = opts.isTinker and nil or infoItemSource,
       isTinker = opts.isTinker or false,
       unsupported = opts.unsupported or false,
     }
@@ -305,12 +308,14 @@ local function BuildEnchantDisplays(planSlot, enchantTasks)
       if tonumber(t.wantEnchantId) == spellId and t.status ~= WSGH.Const.STATUS_OK then
         entry.status = t.status
         entry.manualOnly = t.manualOnly and true or entry.manualOnly
-        entry.itemId = tonumber(t.wantEnchantItemId) or 0
-        entry.itemSource = t.enchantItemSource
+        if t.type ~= "APPLY_TINKER" then
+          entry.itemId = tonumber(t.wantEnchantItemId) or 0
+          entry.itemSource = t.enchantItemSource
+        end
         break
       end
     end
-    if entry.itemId == 0 and WSGH.Data and WSGH.Data.Enchants and WSGH.Data.Enchants.GetItemForEnchant then
+    if not entry.isTinker and entry.itemId == 0 and WSGH.Data and WSGH.Data.Enchants and WSGH.Data.Enchants.GetItemForEnchant then
       local iid, src = WSGH.Data.Enchants.GetItemForEnchant(spellId)
       entry.itemId = iid or 0
       entry.itemSource = src

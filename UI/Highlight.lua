@@ -9,6 +9,7 @@ local HighlightState = {
   bagIndicators = {},
   socketIndicators = {},
   enchant = { spellId = nil, itemId = nil, slotId = nil, bagIndicators = {}, slotIndicators = {}, lastBagKey = nil, lastSlotKey = nil },
+  socketHint = { itemId = nil, extraItemId = nil, slotId = nil, bagIndicators = {}, slotIndicators = {}, lastBagKey = nil, lastSlotKey = nil },
   lastBagKey = nil,
   watcher = { lastKey = nil, elapsed = 0 },
   bagReadyWatcher = { frame = nil, elapsed = 0 },
@@ -535,6 +536,13 @@ local function ClearEnchantIndicators()
   HighlightState.enchant.lastSlotKey = nil
 end
 
+local function ClearSocketHintIndicators()
+  ClearAllIndicators(HighlightState.socketHint.bagIndicators)
+  ClearAllIndicators(HighlightState.socketHint.slotIndicators)
+  HighlightState.socketHint.lastBagKey = nil
+  HighlightState.socketHint.lastSlotKey = nil
+end
+
 local CHARACTER_SLOT_BUTTONS = {
   [1] = { "CharacterHeadSlot" },
   [2] = { "CharacterNeckSlot" },
@@ -655,6 +663,104 @@ local function RefreshEnchantHighlights()
     if next(enchant.bagIndicators) then
       ClearAllIndicators(enchant.bagIndicators)
       enchant.lastBagKey = nil
+    end
+  end
+end
+
+local function HasPendingSocketHint(slotId)
+  local diff = WSGH.State and WSGH.State.diff
+  if not diff or not diff.rows then return false end
+  for _, row in ipairs(diff.rows) do
+    if tonumber(row.slotId) == tonumber(slotId) then
+      return row.socketHintText ~= nil
+    end
+  end
+  return false
+end
+
+local function RefreshSocketHintHighlights()
+  local hint = HighlightState.socketHint
+  if not hint then return end
+
+  local slotId = tonumber(hint.slotId) or nil
+  local itemId = tonumber(hint.itemId) or 0
+  local extraItemId = tonumber(hint.extraItemId) or 0
+
+  if not slotId and itemId == 0 and extraItemId == 0 then
+    if next(hint.bagIndicators) or next(hint.slotIndicators) then
+      ClearSocketHintIndicators()
+    end
+    return
+  end
+
+  if slotId and not HasPendingSocketHint(slotId) then
+    hint.itemId = nil
+    hint.extraItemId = nil
+    hint.slotId = nil
+    ClearSocketHintIndicators()
+    return
+  end
+
+  local slotButton = slotId and GetCharacterSlotButton(slotId) or nil
+  if slotButton then
+    local slotKey = (slotButton.GetName and slotButton:GetName()) or tostring(slotButton)
+    if hint.lastSlotKey ~= slotKey then
+      ClearAllIndicators(hint.slotIndicators)
+      hint.lastSlotKey = slotKey
+      local indicator = CreateIndicator(slotButton)
+      if indicator then
+        indicator.label:SetText("S")
+        indicator:Show()
+        ApplyHighlightStyle(slotButton, "slot")
+        hint.slotIndicators[slotButton] = true
+      end
+    end
+  else
+    if next(hint.slotIndicators) then
+      ClearAllIndicators(hint.slotIndicators)
+      hint.lastSlotKey = nil
+    end
+  end
+
+  if AreBagFramesVisible() then
+    local itemIds = {}
+    if itemId ~= 0 then itemIds[itemId] = true end
+    if extraItemId ~= 0 then itemIds[extraItemId] = true end
+
+    local bagButtonIndex = BuildVisibleBagButtonIndex()
+    local bagButtons = {}
+    for id in pairs(itemIds) do
+      for _, btn in ipairs(bagButtonIndex[id] or {}) do
+        bagButtons[btn] = true
+      end
+    end
+
+    local bagKeyParts = {}
+    for btn in pairs(bagButtons) do
+      local btnName = (btn and btn.GetName and btn:GetName()) or tostring(btn)
+      bagKeyParts[#bagKeyParts + 1] = btnName
+    end
+    table.sort(bagKeyParts)
+    local bagKey = (#bagKeyParts > 0) and table.concat(bagKeyParts, "|") or "none"
+
+    if hint.lastBagKey ~= bagKey then
+      ClearAllIndicators(hint.bagIndicators)
+      hint.lastBagKey = bagKey
+      for btn in pairs(bagButtons) do
+        local indicator = CreateIndicator(btn)
+        if indicator then
+          ConfigureIndicatorForBag(indicator)
+          indicator.label:SetText("S")
+          indicator:Show()
+          ApplyHighlightStyle(btn, "bag")
+          hint.bagIndicators[btn] = true
+        end
+      end
+    end
+  else
+    if next(hint.bagIndicators) then
+      ClearAllIndicators(hint.bagIndicators)
+      hint.lastBagKey = nil
     end
   end
 end
@@ -939,6 +1045,7 @@ function WSGH.UI.Highlight.Refresh()
   targets = targets or {}
   if not slotId then
     RefreshEnchantHighlights()
+    RefreshSocketHintHighlights()
     return
   end
   local tasksByIndex, rowSocketCount = BuildSocketTasksByIndex(slotId)
@@ -1033,6 +1140,7 @@ function WSGH.UI.Highlight.Refresh()
   end
 
   RefreshEnchantHighlights()
+  RefreshSocketHintHighlights()
 end
 
 function WSGH.UI.Highlight.UpdateFromState()
@@ -1077,6 +1185,17 @@ function WSGH.UI.Highlight.SetEnchantTarget(spellId, itemId, slotId)
   WSGH.UI.Highlight.Refresh()
 end
 
+function WSGH.UI.Highlight.SetSocketHintTarget(itemId, slotId, extraItemId)
+  local item = tonumber(itemId) or 0
+  local extra = tonumber(extraItemId) or 0
+  local slot = tonumber(slotId) or 0
+  HighlightState.socketHint.itemId = (item ~= 0) and item or nil
+  HighlightState.socketHint.extraItemId = (extra ~= 0) and extra or nil
+  HighlightState.socketHint.slotId = (slot ~= 0) and slot or nil
+  ClearSocketHintIndicators()
+  WSGH.UI.Highlight.Refresh()
+end
+
 function WSGH.UI.Highlight.ClearAll()
   HighlightState.target = nil
   HighlightState.targets = nil
@@ -1089,5 +1208,11 @@ function WSGH.UI.Highlight.ClearAll()
     HighlightState.enchant.itemId = nil
     HighlightState.enchant.slotId = nil
     ClearEnchantIndicators()
+  end
+  if HighlightState.socketHint then
+    HighlightState.socketHint.itemId = nil
+    HighlightState.socketHint.extraItemId = nil
+    HighlightState.socketHint.slotId = nil
+    ClearSocketHintIndicators()
   end
 end
