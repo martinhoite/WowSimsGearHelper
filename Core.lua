@@ -56,6 +56,7 @@ function WSGH.Debug.List()
     "DumpSlot(slotId)",
     "DumpDiffRow(slotId)",
     "DebugSocketState(slotId)",
+    "SocketDiagnostics()",
     "DumpShoppingEntries(maxEntries)",
     "DumpShoppingRow(index)",
     "DumpShoppingItem(itemId)",

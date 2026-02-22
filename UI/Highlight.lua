@@ -23,6 +23,7 @@ local HighlightState = {
 
 local bagEventFrame
 local IsUIVisible
+local ClearAllIndicators
 local function AreBagFramesVisible()
   if WSGH.UI and WSGH.UI.BagAdapters and WSGH.UI.BagAdapters.AreBagFramesVisible then
     return WSGH.UI.BagAdapters.AreBagFramesVisible()
@@ -68,19 +69,51 @@ IsUIVisible = function()
   return WSGH and WSGH.UI and WSGH.UI.frame and WSGH.UI.frame:IsShown()
 end
 
-local function HandleSocketFrameShow(frame)
-  if HighlightState.isHandlingSocketShow then return end
-  if not IsUIVisible() then return end
-  HighlightState.isHandlingSocketShow = true
-  -- Map the socketing item to an equipped slot and pick the first non-OK task for it.
-  local slotId = HighlightState.activeSlotId
-  if not slotId then
-    local socketingSlot = frame and frame.socketingSlot or nil
-    if socketingSlot and socketingSlot > 0 then
-      slotId = socketingSlot
+local function NormalizeSocketName(text)
+  if type(text) ~= "string" then return "" end
+  if WSGH.Util and WSGH.Util.NormalizeName then
+    return WSGH.Util.NormalizeName(text, true)
+  end
+  return text:lower():gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function GetSocketFrameItemName()
+  local label = _G.ItemSocketingDescriptionTextLeft1
+  if not (label and label.GetText) then return nil end
+  local text = label:GetText()
+  if type(text) ~= "string" or text == "" then return nil end
+  return text
+end
+
+local function FindEquippedSlotByNormalizedName(normalizedName)
+  normalizedName = NormalizeSocketName(normalizedName)
+  if normalizedName == "" then return nil end
+  for _, slotMeta in ipairs(WSGH.Const.SLOT_ORDER) do
+    local invLink = GetInventoryItemLink and GetInventoryItemLink("player", slotMeta.slotId) or nil
+    if invLink then
+      local invName = NormalizeSocketName(GetItemInfo(invLink))
+      if invName ~= "" and invName == normalizedName then
+        return slotMeta.slotId
+      end
     end
   end
-  local link = frame.itemLink
+  return nil
+end
+
+local function ResolveSlotIdFromSocketFrame(frame, fallbackSlotId)
+  local slotId = nil
+  -- Primary path for this client: item name shown in socketing description.
+  slotId = FindEquippedSlotByNormalizedName(GetSocketFrameItemName())
+  if slotId then
+    return slotId
+  end
+
+  -- Legacy fallbacks for clients where slot/link fields are populated.
+  local socketingSlot = frame and frame.socketingSlot or nil
+  if socketingSlot and socketingSlot > 0 then
+    slotId = socketingSlot
+  end
+  local link = frame and frame.itemLink or nil
   local itemId = link and select(2, GetItemInfoInstant(link)) or nil
   if not slotId and itemId and itemId ~= 0 then
     for _, slotMeta in ipairs(WSGH.Const.SLOT_ORDER) do
@@ -90,6 +123,42 @@ local function HandleSocketFrameShow(frame)
       end
     end
   end
+  if not slotId then
+    slotId = tonumber(fallbackSlotId) or nil
+  end
+  return slotId
+end
+
+local function GetExpectedSocketSlotId()
+  local slotId = tonumber(HighlightState.activeSlotId) or nil
+  if slotId then return slotId end
+  if HighlightState.target then
+    slotId = tonumber(HighlightState.target.slotId) or nil
+    if slotId then return slotId end
+  end
+  if HighlightState.targets and #HighlightState.targets > 0 then
+    slotId = tonumber(HighlightState.targets[1].slotId) or nil
+    if slotId then return slotId end
+  end
+  return nil
+end
+
+local function ClearSocketGuidanceIndicators()
+  if next(HighlightState.bagIndicators) then
+    ClearAllIndicators(HighlightState.bagIndicators)
+  end
+  if next(HighlightState.socketIndicators) then
+    ClearAllIndicators(HighlightState.socketIndicators)
+  end
+  HighlightState.lastBagKey = nil
+end
+
+local function HandleSocketFrameShow(frame)
+  if HighlightState.isHandlingSocketShow then return end
+  if not IsUIVisible() then return end
+  HighlightState.isHandlingSocketShow = true
+  -- Always prefer the currently opened socket frame slot/item over stale state.
+  local slotId = ResolveSlotIdFromSocketFrame(frame, HighlightState.activeSlotId)
   if not slotId then
     if HighlightState.socketShowRetries < 2 and C_Timer and C_Timer.After then
       HighlightState.socketShowRetries = HighlightState.socketShowRetries + 1
@@ -155,14 +224,21 @@ local function HandleSocketApply()
 end
 
 local function HandleSocketHide()
-  if not IsUIVisible() then return end
+  -- Clear socket-guidance state even if addon UI was hidden while socketing.
   HighlightState.target = nil
   HighlightState.targets = nil
+  HighlightState.activeSlotId = nil
+  HighlightState.lastBagKey = nil
   HighlightState.watcher.lastKey = nil
   HighlightState.watcher.elapsed = 0
   HighlightState.socketShowHandled = false
   HighlightState.socketShowRetries = 0
-  WSGH.UI.Highlight.ClearAll()
+  if next(HighlightState.bagIndicators) then
+    ClearAllIndicators(HighlightState.bagIndicators)
+  end
+  if next(HighlightState.socketIndicators) then
+    ClearAllIndicators(HighlightState.socketIndicators)
+  end
 end
 
 local function HandleSocketShow(frame)
@@ -292,20 +368,30 @@ local function ConfigureIndicatorForBag(indicator)
   end
 end
 
+local function SetIndicatorLabel(indicator, text)
+  if not (indicator and indicator.label) then return end
+  indicator.label:SetText(text or "")
+  if text and text ~= "" then
+    indicator.label:Show()
+    if indicator.labelBg then indicator.labelBg:Show() end
+  else
+    indicator.label:Hide()
+    if indicator.labelBg then indicator.labelBg:Hide() end
+  end
+end
+
 local function ClearIndicator(parent)
   if parent and parent.WSGHIndicator then
     local indicator = parent.WSGHIndicator
     ClearHighlightStyle(parent)
     indicator:Hide()
-    indicator.label:SetText("")
-    indicator.label:Hide()
-    if indicator.labelBg then indicator.labelBg:Hide() end
+    SetIndicatorLabel(indicator, "")
     if indicator.bg then indicator.bg:SetColorTexture(0, 0, 0, 0) end
     if indicator.status then indicator.status:Hide() end
   end
 end
 
-local function ClearAllIndicators(collection)
+ClearAllIndicators = function(collection)
   for btn in pairs(collection) do
     ClearIndicator(btn)
     collection[btn] = nil
@@ -382,7 +468,21 @@ end
 
 local function ShouldUseCurrentSocket(slotId)
   if not slotId then return true end
+
+  -- Primary validation path: compare socket UI item-name against equipped slot name.
+  local openName = NormalizeSocketName(GetSocketFrameItemName())
   local invLink = GetInventoryItemLink and GetInventoryItemLink("player", slotId) or nil
+  if openName ~= "" and invLink then
+    local invName = NormalizeSocketName(GetItemInfo(invLink))
+    if invName ~= "" and invName ~= openName then
+      return false
+    end
+    if invName ~= "" then
+      return true
+    end
+  end
+
+  -- Fallback validation for clients where socketing link is populated.
   local openLink = ItemSocketingFrame and ItemSocketingFrame.itemLink or nil
   if invLink and openLink then
     local invId = select(2, GetItemInfoInstant(invLink))
@@ -428,15 +528,13 @@ end
 local function UpdateSocketStatus(indicator, task, socketIndex, slotId)
   if not (indicator and indicator.status) then return end
   indicator.status:Hide()
-  indicator.label:SetText(tostring(socketIndex or ""))
-  indicator.label:Show()
+  SetIndicatorLabel(indicator, tostring(socketIndex or ""))
 
   if not task then return end
 
   local wantGemId = tonumber(task.wantGemId) or 0
   local status = task.status
   if status == WSGH.Const.STATUS_OK and wantGemId ~= 0 then
-    indicator.label:SetText("")
     indicator.status:SetTexture(WSGH.Const.ICON_READY)
     indicator.status:ClearAllPoints()
     indicator.status:SetPoint("CENTER", indicator, "CENTER", 0, 0)
@@ -623,7 +721,7 @@ local function RefreshEnchantHighlights()
       enchant.lastSlotKey = slotKey
       local indicator = CreateIndicator(slotButton)
       if indicator then
-        indicator.label:SetText("E")
+        SetIndicatorLabel(indicator, "E")
         indicator:Show()
         ApplyHighlightStyle(slotButton, "slot")
         enchant.slotIndicators[slotButton] = true
@@ -654,7 +752,7 @@ local function RefreshEnchantHighlights()
         local indicator = CreateIndicator(btn)
         if indicator then
           ConfigureIndicatorForBag(indicator)
-          indicator.label:SetText("E")
+          SetIndicatorLabel(indicator, "E")
           indicator:Show()
           ApplyHighlightStyle(btn, "bag")
           enchant.bagIndicators[btn] = true
@@ -711,7 +809,7 @@ local function RefreshSocketHintHighlights()
       hint.lastSlotKey = slotKey
       local indicator = CreateIndicator(slotButton)
       if indicator then
-        indicator.label:SetText("S")
+        SetIndicatorLabel(indicator, "S")
         indicator:Show()
         ApplyHighlightStyle(slotButton, "slot")
         hint.slotIndicators[slotButton] = true
@@ -753,13 +851,9 @@ local function RefreshSocketHintHighlights()
         if indicator then
           ConfigureIndicatorForBag(indicator)
           if slotId then
-            indicator.label:SetText("S")
-            indicator.label:Show()
-            if indicator.labelBg then indicator.labelBg:Show() end
+            SetIndicatorLabel(indicator, "S")
           else
-            indicator.label:SetText("")
-            indicator.label:Hide()
-            if indicator.labelBg then indicator.labelBg:Hide() end
+            SetIndicatorLabel(indicator, "")
           end
           if indicator.bg then indicator.bg:SetColorTexture(0, 0, 0, 0) end
           indicator:Show()
@@ -772,13 +866,9 @@ local function RefreshSocketHintHighlights()
       local indicator = btn and btn.WSGHIndicator or nil
       if indicator then
         if slotId then
-          indicator.label:SetText("S")
-          indicator.label:Show()
-          if indicator.labelBg then indicator.labelBg:Show() end
+          SetIndicatorLabel(indicator, "S")
         else
-          indicator.label:SetText("")
-          indicator.label:Hide()
-          if indicator.labelBg then indicator.labelBg:Hide() end
+          SetIndicatorLabel(indicator, "")
         end
         if indicator.bg then indicator.bg:SetColorTexture(0, 0, 0, 0) end
       end
@@ -818,6 +908,65 @@ function WSGH.Debug.DebugSocketState(slotId)
       info and info.gemItemID or "nil",
       existingId or "nil"
     ))
+  end
+end
+
+function WSGH.Debug.SocketDiagnostics()
+  local frame = ItemSocketingFrame
+  local isOpen = frame and frame:IsShown()
+  if not isOpen then
+    WSGH.Util.Print("SocketDiag: socket UI closed.")
+    return
+  end
+
+  local frameSlot = tonumber(frame.socketingSlot) or 0
+  local openLink = frame.itemLink
+  local openName = GetSocketFrameItemName() or "nil"
+  local openId = 0
+  if type(openLink) == "string" and openLink ~= "" then
+    local _, parsedOpenId = GetItemInfoInstant(openLink)
+    openId = tonumber(parsedOpenId) or 0
+  end
+  local equippedId = (frameSlot > 0 and GetInventoryItemID) and (GetInventoryItemID("player", frameSlot) or 0) or 0
+  local sockets = (GetNumSockets and GetNumSockets()) or 0
+  local expectedSlot = tonumber(HighlightState.activeSlotId) or 0
+
+  WSGH.Util.Print(("SocketDiag: open=1 frameSlot=%d expectedSlot=%d sockets=%d"):format(frameSlot, expectedSlot, sockets))
+  WSGH.Util.Print(("SocketDiag: openName=%s"):format(tostring(openName)))
+  WSGH.Util.Print(("SocketDiag: openId=%d equippedId=%d"):format(openId, equippedId))
+
+  local firstNeed = nil
+  local diff = WSGH.State and WSGH.State.diff
+  if diff and diff.tasks then
+    for _, task in ipairs(diff.tasks) do
+      if task.type == "SOCKET_GEM" and task.status ~= WSGH.Const.STATUS_OK then
+        firstNeed = task
+        break
+      end
+    end
+  end
+
+  if firstNeed then
+    WSGH.Util.Print(("SocketDiag: need slot=%s idx=%s gem=%s"):format(
+      tostring(firstNeed.slotId or 0),
+      tostring(firstNeed.socketIndex or 0),
+      tostring(firstNeed.wantGemId or 0)
+    ))
+  else
+    WSGH.Util.Print("SocketDiag: no pending socket task.")
+  end
+
+  local inspectSlot = frameSlot ~= 0 and frameSlot or expectedSlot
+  if inspectSlot and inspectSlot ~= 0 then
+    local tasksByIndex, count = BuildSocketTasksByIndex(inspectSlot)
+    local maxSockets = math.max(tonumber(sockets) or 0, tonumber(count) or 0)
+    for i = 1, maxSockets do
+      local task = tasksByIndex[i]
+      local want = task and tonumber(task.wantGemId) or 0
+      local cur = tonumber(CurrentSocketGemId(i)) or 0
+      local status = task and tostring(task.status) or "-"
+      WSGH.Util.Print(("SocketDiag: s%d cur=%d want=%d status=%s"):format(i, cur, want, status))
+    end
   end
 end
 
@@ -863,22 +1012,53 @@ end
 
 -- Watcher to detect socket changes while the socket UI is open and resync highlights/diff.
 local function ShouldSocketWatcherRun()
-  local t = HighlightState.target
-  if not t then return false end
-  if not ItemSocketingFrame or not ItemSocketingFrame:IsShown() then return false end
-  if not IsUIVisible() then return false end
-  return true
+  return IsUIVisible()
 end
 
 local function SocketWatcherUpdate(elapsed)
+  if not (ItemSocketingFrame and ItemSocketingFrame:IsShown()) then
+    if HighlightState.target or HighlightState.activeSlotId or (HighlightState.targets and #HighlightState.targets > 0)
+      or next(HighlightState.bagIndicators) or next(HighlightState.socketIndicators) then
+      HighlightState.target = nil
+      HighlightState.targets = nil
+      HighlightState.activeSlotId = nil
+      HighlightState.socketShowHandled = false
+      HighlightState.watcher.lastKey = nil
+      HighlightState.watcher.elapsed = 0
+      ClearSocketGuidanceIndicators()
+    end
+    return
+  end
+
   HighlightState.watcher.elapsed = (HighlightState.watcher.elapsed or 0) + elapsed
   if HighlightState.watcher.elapsed < 0.2 then return end
   HighlightState.watcher.elapsed = 0
 
-  local t = HighlightState.target
-  if not t then return end
+  local frame = ItemSocketingFrame
+  local frameSlotId = ResolveSlotIdFromSocketFrame(frame, nil)
+  local expectedSlotId = GetExpectedSocketSlotId()
+  if frameSlotId and (not expectedSlotId or frameSlotId ~= expectedSlotId) then
+    local openTargets = BuildTargetsForSlot(frameSlotId)
+    HighlightState.watcher.lastKey = nil
+    if #openTargets > 0 then
+      HighlightState.activeSlotId = frameSlotId
+      HighlightState.targets = openTargets
+      HighlightState.target = nil
+      WSGH.UI.Highlight.Refresh()
+    else
+      HighlightState.targets = nil
+      HighlightState.target = nil
+      HighlightState.activeSlotId = nil
+      ClearSocketGuidanceIndicators()
+    end
+    return
+  end
+
+  local slotId = expectedSlotId
+  if not slotId then return end
+
   local numSockets = GetNumSockets and GetNumSockets() or 0
-  local parts = { tostring(t.slotId or 0) }
+  local parts = { tostring(slotId or 0) }
   for i = 1, numSockets do
     parts[#parts + 1] = tostring(CurrentSocketGemId(i) or 0)
   end
@@ -931,6 +1111,9 @@ function WSGH.UI.Highlight.InitializeHooks()
       ShouldWatch = ShouldSocketWatcherRun,
       OnWatcherUpdate = SocketWatcherUpdate,
     })
+    if IsUIVisible() and WSGH.UI.SocketHooks.EnableWatcher then
+      WSGH.UI.SocketHooks.EnableWatcher()
+    end
   end
   if ItemSocketingFrame and ItemSocketingFrame:IsShown() and not HighlightState.socketShowHandled then
     HandleSocketFrameShow(ItemSocketingFrame)
@@ -1021,6 +1204,14 @@ function WSGH.UI.Highlight.Refresh()
     return
   end
   WSGH.UI.Highlight.InitializeHooks()
+  local socketingOpen = ItemSocketingFrame and ItemSocketingFrame:IsShown()
+  if not socketingOpen then
+    HighlightState.target = nil
+    HighlightState.targets = nil
+    HighlightState.activeSlotId = nil
+    HighlightState.watcher.lastKey = nil
+    ClearSocketGuidanceIndicators()
+  end
   if AreBagFramesVisible() then
     local adapters = WSGH.UI and WSGH.UI.BagAdapters or nil
     local arkVisible = adapters and adapters.IsArkInventoryVisible and adapters.IsArkInventoryVisible()
@@ -1070,6 +1261,10 @@ function WSGH.UI.Highlight.Refresh()
 
   targets = targets or {}
   if not slotId then
+    if next(HighlightState.bagIndicators) then
+      ClearAllIndicators(HighlightState.bagIndicators)
+    end
+    HighlightState.lastBagKey = nil
     RefreshEnchantHighlights()
     RefreshSocketHintHighlights()
     return
@@ -1078,7 +1273,42 @@ function WSGH.UI.Highlight.Refresh()
   local numSockets = GetNumSockets and GetNumSockets() or 0
   numSockets = math.max(numSockets, rowSocketCount or 0)
 
-  local socketingOpen = ItemSocketingFrame and ItemSocketingFrame:IsShown()
+  local frameSlotId = socketingOpen and ResolveSlotIdFromSocketFrame(ItemSocketingFrame, nil) or nil
+  local expectedSlotId = GetExpectedSocketSlotId()
+  if socketingOpen and frameSlotId and (not expectedSlotId or frameSlotId ~= expectedSlotId) then
+    slotId = frameSlotId
+    targets = BuildTargetsForSlot(slotId)
+    HighlightState.activeSlotId = slotId
+    HighlightState.watcher.lastKey = nil
+    if #targets > 0 then
+      HighlightState.targets = targets
+      HighlightState.target = nil
+      tasksByIndex, rowSocketCount = BuildSocketTasksByIndex(slotId)
+      numSockets = math.max((GetNumSockets and GetNumSockets()) or 0, rowSocketCount or 0)
+    else
+      HighlightState.targets = nil
+      HighlightState.target = nil
+      HighlightState.activeSlotId = nil
+      ClearSocketGuidanceIndicators()
+      RefreshEnchantHighlights()
+      RefreshSocketHintHighlights()
+      return
+    end
+  end
+  local liveSocketCount = socketingOpen and ((GetNumSockets and GetNumSockets()) or 0) or 0
+  local expectedSocketCount = tonumber(rowSocketCount) or 0
+  if socketingOpen and expectedSocketCount > 0 and liveSocketCount > 0 and liveSocketCount ~= expectedSocketCount then
+    ClearSocketGuidanceIndicators()
+    RefreshEnchantHighlights()
+    RefreshSocketHintHighlights()
+    return
+  end
+  if socketingOpen and not ShouldUseCurrentSocket(slotId) then
+    ClearSocketGuidanceIndicators()
+    RefreshEnchantHighlights()
+    RefreshSocketHintHighlights()
+    return
+  end
   if socketingOpen and AreAllSocketTasksResolved(tasksByIndex) then
     HighlightState.targets = nil
     HighlightState.target = nil
@@ -1097,7 +1327,7 @@ function WSGH.UI.Highlight.Refresh()
     end
     HighlightState.lastBagKey = nil
   end
-  local showBagHighlights = socketingOpen and (#targets > 0) and not AreAllTargetsResolved(targets, slotId)
+  local showBagHighlights = socketingOpen and ShouldUseCurrentSocket(slotId) and (#targets > 0) and not AreAllTargetsResolved(targets, slotId)
   if not showBagHighlights then
     if next(HighlightState.bagIndicators) then
       ClearAllIndicators(HighlightState.bagIndicators)
@@ -1129,7 +1359,7 @@ function WSGH.UI.Highlight.Refresh()
         local indicator = CreateIndicator(btn)
         if indicator then
           ConfigureIndicatorForBag(indicator)
-          indicator.label:SetText(FormatSocketIndexList(socketIndexMap))
+          SetIndicatorLabel(indicator, FormatSocketIndexList(socketIndexMap))
           indicator:Show()
           ApplyHighlightStyle(btn, "bag")
           HighlightState.bagIndicators[btn] = true
@@ -1148,7 +1378,7 @@ function WSGH.UI.Highlight.Refresh()
     if socketBtn then
       local indicator = CreateIndicator(socketBtn)
       if indicator then
-        indicator.label:SetText(tostring(i))
+        SetIndicatorLabel(indicator, tostring(i))
         local task = tasksByIndex[i]
         local target = targetsBySocketIndex[i]
         if not task and target and target.gemId then
@@ -1177,6 +1407,10 @@ function WSGH.UI.Highlight.UpdateFromState()
   -- If the socketing frame is open and we already have a target, keep showing that target
   -- to avoid retargeting to another slot mid-socketing. Diff data is refreshed elsewhere.
   local socketingOpen = ItemSocketingFrame and ItemSocketingFrame:IsShown()
+  if socketingOpen and not HighlightState.socketShowHandled then
+    HandleSocketFrameShow(ItemSocketingFrame)
+    return
+  end
   if socketingOpen and (HighlightState.target or HighlightState.targets) then
     WSGH.UI.Highlight.Refresh()
     return
@@ -1242,3 +1476,4 @@ function WSGH.UI.Highlight.ClearAll()
     ClearSocketHintIndicators()
   end
 end
+
