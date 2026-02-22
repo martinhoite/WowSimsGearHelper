@@ -3,7 +3,6 @@ WSGH.UI = WSGH.UI or {}
 WSGH.UI.Shopping = WSGH.UI.Shopping or {}
 
 local DEBUG_SHOPPING = false
-local AUCTION_WON_PATTERNS = {}
 
 local function DebugShopping(msg)
   if not DEBUG_SHOPPING then return end
@@ -12,25 +11,9 @@ local function DebugShopping(msg)
   end
 end
 
-local function NormalizeName(text)
-  if type(text) ~= "string" then return "" end
-  text = text:lower()
-  text = text:gsub("%s+", " ")
-  text = text:gsub("^%s+", ""):gsub("%s+$", "")
-  return text
-end
-
-local function BuildAuctionWonPatterns()
-  wipe(AUCTION_WON_PATTERNS)
-  if type(ERR_AUCTION_WON_S) == "string" then
-    AUCTION_WON_PATTERNS[#AUCTION_WON_PATTERNS + 1] = "^" .. ERR_AUCTION_WON_S:gsub("%%s", "(.+)") .. "$"
-  end
-  AUCTION_WON_PATTERNS[#AUCTION_WON_PATTERNS + 1] = "|Hitem:%d+.-|h%[[^]]+%]|h"
-end
-
 local function ResolveKnownNeededItemIdByName(itemName)
   if type(itemName) ~= "string" or itemName == "" then return 0 end
-  local wantedName = NormalizeName(itemName)
+  local wantedName = WSGH.Util.NormalizeName(itemName)
   if wantedName == "" then return 0 end
   local diff = WSGH.State and WSGH.State.diff
   if not (diff and diff.rows) then return 0 end
@@ -65,7 +48,7 @@ local function ResolveKnownNeededItemIdByName(itemName)
     if not knownName and C_Item and C_Item.RequestLoadItemDataByID then
       C_Item.RequestLoadItemDataByID(itemId)
     end
-    if knownName and NormalizeName(knownName) == wantedName then
+    if knownName and WSGH.Util.NormalizeName(knownName) == wantedName then
       return itemId
     end
   end
@@ -75,9 +58,6 @@ end
 
 local function HandleAuctionWonMessage(message)
   if not message then return end
-  if #AUCTION_WON_PATTERNS == 0 then
-    BuildAuctionWonPatterns()
-  end
   local itemLink = message:match("|Hitem:%d+.-|h%[[^]]+%]|h")
   local itemId = itemLink and select(1, GetItemInfoInstant(itemLink)) or nil
   local bracketName = nil

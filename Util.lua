@@ -12,6 +12,19 @@ function WSGH.Util.SafeLower(s)
   return s:lower()
 end
 
+-- Normalizes item/recipe names for locale-safe comparisons.
+-- Set stripPunctuation to true for looser matching (e.g., recipe names).
+function WSGH.Util.NormalizeName(text, stripPunctuation)
+  if type(text) ~= "string" then return "" end
+  text = text:lower()
+  if stripPunctuation then
+    text = text:gsub("%b()", " ")
+    text = text:gsub("[%c%p]", " ")
+  end
+  text = text:gsub("%s+", " ")
+  return WSGH.Util.Trim(text)
+end
+
 function WSGH.Util.TableCount(t)
   if type(t) ~= "table" then return 0 end
   local n = 0

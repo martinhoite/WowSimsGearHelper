@@ -274,16 +274,7 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
   if tinkerSpellId == 0 then return false end
   local targetName = GetSpellInfo(tinkerSpellId)
   if not targetName or targetName == "" then return false end
-  local function normalizeName(text)
-    if type(text) ~= "string" then return "" end
-    text = text:lower()
-    text = text:gsub("%b()", " ")
-    text = text:gsub("[%c%p]", " ")
-    text = text:gsub("%s+", " ")
-    text = text:gsub("^%s+", ""):gsub("%s+$", "")
-    return text
-  end
-  local targetNorm = normalizeName(targetName)
+  local targetNorm = WSGH.Util.NormalizeName(targetName, true)
 
   local hasLegacyTradeSkillApi =
     type(GetNumTradeSkills) == "function" and
@@ -309,7 +300,7 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
         candidateIndex = i
         break
       end
-      if skillType ~= "header" and targetNorm ~= "" and normalizeName(name) == targetNorm then
+      if skillType ~= "header" and targetNorm ~= "" and WSGH.Util.NormalizeName(name, true) == targetNorm then
         candidateIndex = i
         break
       end
@@ -324,7 +315,7 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
         end
         if selected > 0 then
           local selectedName, selectedType = GetTradeSkillInfo(selected)
-          if selectedType ~= "header" and selectedName and normalizeName(selectedName) == targetNorm then
+          if selectedType ~= "header" and selectedName and WSGH.Util.NormalizeName(selectedName, true) == targetNorm then
             return true
           end
         end
@@ -345,7 +336,7 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
         pcall(C_TradeSkillUI.SelectRecipe, recipeId)
         return true
       end
-      if info and targetNorm ~= "" and normalizeName(info.name) == targetNorm then
+      if info and targetNorm ~= "" and WSGH.Util.NormalizeName(info.name, true) == targetNorm then
         pcall(C_TradeSkillUI.SelectRecipe, recipeId)
         return true
       end

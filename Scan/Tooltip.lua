@@ -237,7 +237,7 @@ local function EnsureTinkerCache()
     return entry
   end
 
-  for key, value in pairs(tinkerMap) do
+  for key, _ in pairs(tinkerMap) do
     local spellId = 0
     if type(key) == "number" then
       spellId = tonumber(key) or 0
