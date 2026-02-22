@@ -91,8 +91,6 @@ WSGH.Const.UI = {
     entryHeight = 20,
     padding = 10,
     searchButton = { width = 20, height = 18 },
-    backdropColor = { 0, 0, 0, 0.85 },
-    borderColor = { 0, 0, 0, 1 },
     categories = { "Gems", "Enchants", "Other" },
   },
 }

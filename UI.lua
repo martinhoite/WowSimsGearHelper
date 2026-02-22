@@ -1214,8 +1214,6 @@ function WSGH.UI.Init()
     edgeSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
   })
-  sidebar:SetBackdropColor(unpack(WSGH.Const.UI.shopping.backdropColor))
-  sidebar:SetBackdropBorderColor(unpack(WSGH.Const.UI.shopping.borderColor))
 
   local sidebarTitle = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   sidebarTitle:SetPoint("TOPLEFT", 14, -14)
