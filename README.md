@@ -1,5 +1,5 @@
 WowSims Gear Helper
-![Version](https://img.shields.io/badge/version-0.0.1-blue)
+![Version](https://img.shields.io/badge/version-0.0.3-blue)
 ===================
 
 
@@ -11,9 +11,10 @@ exports by showing what to change and guiding you through the steps ingame.
 Features
 --------
 - Import WowSims exports and build a gear plan.
-- Highlight sockets, enchants, and shopping needs.
+- Highlight sockets, enchants, upgrades, and shopping needs.
+- Support for extra sockets and tinkers.
 - Bag/character slot highlighting to guide actions.
-- Live shopping list updates as items are obtained.
+- Live shopping list updates as items are bought / obtained from mailbox.
 
 Supported Bag Addons
 --------------------
@@ -47,8 +48,7 @@ Please use GitHub Issues and include as much context as possible.
 
 Limitations
 -----------
-- Item upgrades are not handled.
-- Reforging is not handled. Use ReforgeLite: <https://www.curseforge.com/wow/addons/reforgelite>
+- Reforging is not handled. Use ReforgeLite: <https://www.curseforge.com/wow/addons/reforgelite>, an integration is planned to work with ReforgeLite from WSGH directly.
 
 Attribution
 -----------
