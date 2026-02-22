@@ -4,6 +4,7 @@ WSGH.UI.Shopping = WSGH.UI.Shopping or {}
 
 local DEBUG_SHOPPING = false
 local jpHighlightItemId = nil
+local IsAuctionHouseOpen
 
 local function DebugShopping(msg)
   if not DEBUG_SHOPPING then return end
@@ -104,6 +105,168 @@ local function HandleAuctionWonMessage(message)
   end
 end
 
+local function EscapeLuaPattern(text)
+  if type(text) ~= "string" then return "" end
+  return (text:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1"))
+end
+
+local auctionWonMessagePatterns = nil
+
+local function BuildAuctionWonMessagePatterns()
+  if auctionWonMessagePatterns then
+    return auctionWonMessagePatterns
+  end
+
+  auctionWonMessagePatterns = {}
+  for globalName, globalValue in pairs(_G) do
+    if type(globalName) == "string" and globalName:match("^ERR_AUCTION_WON") and type(globalValue) == "string" and globalValue ~= "" then
+      local escaped = EscapeLuaPattern(globalValue)
+      local pattern = "^" .. escaped:gsub("%%%%s", "(.+)"):gsub("%%%%d", "(%%d+)") .. "$"
+      auctionWonMessagePatterns[#auctionWonMessagePatterns + 1] = pattern
+    end
+  end
+
+  return auctionWonMessagePatterns
+end
+
+local function IsAuctionWonMessage(message)
+  if type(message) ~= "string" or message == "" then
+    return false
+  end
+  local patterns = BuildAuctionWonMessagePatterns()
+  for _, pattern in ipairs(patterns) do
+    if message:match(pattern) then
+      return true
+    end
+  end
+  return false
+end
+
+local function PruneRecentAuctionMessageKeys(now)
+  WSGH.UI.Shopping.recentAuctionMessageKeys = WSGH.UI.Shopping.recentAuctionMessageKeys or {}
+  for key, seenAt in pairs(WSGH.UI.Shopping.recentAuctionMessageKeys) do
+    if (now - (tonumber(seenAt) or 0)) > 30 then
+      WSGH.UI.Shopping.recentAuctionMessageKeys[key] = nil
+    end
+  end
+end
+
+local function BuildAuctionWonMessageKey(message, messageId)
+  messageId = tonumber(messageId) or 0
+  if messageId ~= 0 then
+    return "id:" .. tostring(messageId)
+  end
+  if type(message) ~= "string" or message == "" then
+    return nil
+  end
+  return "msg:" .. tostring(message)
+end
+
+local function ShouldHandleAuctionWonMessage(message, messageId)
+  if not IsAuctionWonMessage(message) then
+    return false
+  end
+
+  local now = GetTime and GetTime() or 0
+  PruneRecentAuctionMessageKeys(now)
+
+  local key = BuildAuctionWonMessageKey(message, messageId)
+  if not key then return false end
+
+  local seenAt = tonumber(WSGH.UI.Shopping.recentAuctionMessageKeys[key]) or 0
+  if seenAt > 0 and (now - seenAt) < 30 then
+    return false
+  end
+
+  WSGH.UI.Shopping.recentAuctionMessageKeys[key] = now
+  return true
+end
+
+local function GetAuctionChatFrame()
+  local frame = DEFAULT_CHAT_FRAME or ChatFrame1
+  if not frame then return nil end
+  if type(frame.GetNumMessages) ~= "function" then return nil end
+  if type(frame.GetMessageInfo) ~= "function" then return nil end
+  return frame
+end
+
+local function PollAuctionWonMessagesFromChatHistory()
+  if not IsAuctionHouseOpen() then return end
+
+  local chatFrame = GetAuctionChatFrame()
+  if not chatFrame then return end
+
+  WSGH.UI.Shopping.chatPollState = WSGH.UI.Shopping.chatPollState or {}
+  local pollState = WSGH.UI.Shopping.chatPollState
+  if pollState.chatFrame ~= chatFrame then
+    pollState.chatFrame = chatFrame
+    pollState.lastMessageIndex = 0
+  end
+
+  local numMessages = tonumber(chatFrame:GetNumMessages()) or 0
+  if numMessages <= 0 then
+    pollState.lastMessageIndex = 0
+    return
+  end
+
+  local lastIndex = tonumber(pollState.lastMessageIndex) or 0
+  if lastIndex <= 0 or numMessages < lastIndex then
+    -- Re-sync by walking backward from newest message and bail early on first
+    -- recently seen auction marker; then replay unknown lines oldest->newest.
+    local pending = {}
+    local resyncHistoryLines = tonumber(WSGH.Const and WSGH.Const.AUCTION_CHAT_RESYNC_HISTORY_LINES) or 80
+    local oldest = math.max(1, numMessages - resyncHistoryLines)
+    for i = numMessages, oldest, -1 do
+      local message, _, _, _, _, messageId = chatFrame:GetMessageInfo(i)
+      local key = BuildAuctionWonMessageKey(message, messageId)
+      if key and WSGH.UI.Shopping.recentAuctionMessageKeys and WSGH.UI.Shopping.recentAuctionMessageKeys[key] then
+        break
+      end
+      pending[#pending + 1] = { message = message, messageId = messageId }
+    end
+    for i = #pending, 1, -1 do
+      local entry = pending[i]
+      if ShouldHandleAuctionWonMessage(entry.message, entry.messageId) then
+        HandleAuctionWonMessage(entry.message)
+      end
+    end
+    pollState.lastMessageIndex = numMessages
+    return
+  end
+
+  for i = lastIndex + 1, numMessages do
+    local message, _, _, _, _, messageId = chatFrame:GetMessageInfo(i)
+    if ShouldHandleAuctionWonMessage(message, messageId) then
+      HandleAuctionWonMessage(message)
+    end
+  end
+
+  pollState.lastMessageIndex = numMessages
+end
+
+local function StopAuctionChatPoller()
+  local ticker = WSGH.UI.Shopping.auctionChatPollTicker
+  if ticker and ticker.Cancel then
+    ticker:Cancel()
+  end
+  WSGH.UI.Shopping.auctionChatPollTicker = nil
+end
+
+local function StartAuctionChatPoller()
+  if WSGH.UI.Shopping.auctionChatPollTicker then return end
+  if not (C_Timer and C_Timer.NewTicker) then return end
+
+  local pollIntervalSeconds = tonumber(WSGH.Const and WSGH.Const.AUCTION_CHAT_POLL_INTERVAL_SECONDS) or 2.0
+  if pollIntervalSeconds <= 0 then
+    pollIntervalSeconds = 2.0
+  end
+
+  PollAuctionWonMessagesFromChatHistory()
+  WSGH.UI.Shopping.auctionChatPollTicker = C_Timer.NewTicker(pollIntervalSeconds, function()
+    PollAuctionWonMessagesFromChatHistory()
+  end)
+end
+
 local function ExtractItemIdFromAuctionRef(itemRef)
   if type(itemRef) == "number" then
     return itemRef
@@ -165,7 +328,7 @@ local function ResetAuctionHouseToBrowse()
   end
 end
 
-local function IsAuctionHouseOpen()
+IsAuctionHouseOpen = function()
   if AuctionHouseFrame and AuctionHouseFrame:IsShown() then return true end
   if AuctionFrame and AuctionFrame:IsShown() then return true end
   return false
@@ -287,7 +450,9 @@ function WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
   local now = GetTime and GetTime() or 0
   WSGH.UI.lastPurchase = WSGH.UI.lastPurchase or {}
   local last = WSGH.UI.lastPurchase
-  if last.itemId == itemId and last.count == count and (now - (last.time or 0)) < 1.0 then
+  -- Auction wins can fire through multiple channels almost at once (AH event + chat).
+  -- Keep a tight suppression window so real back-to-back wins are not dropped.
+  if last.itemId == itemId and last.count == count and (now - (last.time or 0)) < 0.20 then
     return
   end
   last.itemId = itemId
@@ -507,7 +672,8 @@ function WSGH.UI.Shopping.UpdateShoppingList()
     local totalNeeded = tonumber(need.count) or 0
     local remaining = totalNeeded - bagCount
     if remaining > 0 then
-      local bought = math.min(pending, remaining)
+      -- Progress text should reflect purchases toward what is still missing now.
+      local bought = math.min(remaining, pending)
       local category = need.category or "Other"
       local bucket = itemsByCategory[category] or itemsByCategory["Other"]
       bucket[#bucket + 1] = {
@@ -722,14 +888,15 @@ function WSGH.UI.Shopping.UpdateShoppingList()
             entry.icon.itemId = data.itemId
             entry.text:SetFontObject("GameFontNormalSmall")
             entry.text:SetText(name or ("Item " .. data.itemId))
-            local isFullyPurchased = (tonumber(data.bought) or 0) >= (tonumber(data.totalNeeded) or 0) and (tonumber(data.totalNeeded) or 0) > 0
+            local purchaseTarget = tonumber(data.count) or 0
+            local isFullyPurchased = (tonumber(data.bought) or 0) >= purchaseTarget and purchaseTarget > 0
             if isFullyPurchased then
               entry.text:SetTextColor(0.72, 0.72, 0.72, 1)
             else
               entry.text:SetTextColor(1, 1, 1, 1)
             end
             if entry.strike then entry.strike:Hide() end
-            local totalNeeded = tonumber(data.totalNeeded) or tonumber(data.count) or 0
+            local totalNeeded = purchaseTarget
             local bought = data.bought or 0
             if bought > totalNeeded then
               bought = totalNeeded
@@ -932,21 +1099,34 @@ local function EnsurePurchaseListener()
     pcall(listener.RegisterEvent, listener, "AUCTION_HOUSE_SHOW_ITEM_WON_NOTIFICATION")
     pcall(listener.RegisterEvent, listener, "AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION")
   end
+  listener:RegisterEvent("AUCTION_HOUSE_SHOW")
+  listener:RegisterEvent("AUCTION_HOUSE_CLOSED")
   listener:RegisterEvent("CHAT_MSG_SYSTEM")
+  listener:RegisterEvent("CHAT_MSG_LOOT")
   listener:SetScript("OnEvent", function(_, event, ...)
-    if event == "AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION" or event == "AUCTION_HOUSE_SHOW_ITEM_WON_NOTIFICATION" then
+    if event == "AUCTION_HOUSE_SHOW" then
+      StartAuctionChatPoller()
+    elseif event == "AUCTION_HOUSE_CLOSED" then
+      StopAuctionChatPoller()
+    elseif event == "AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION" or event == "AUCTION_HOUSE_SHOW_ITEM_WON_NOTIFICATION" then
       local itemRef, quantity = ...
       local itemId = ExtractItemIdFromAuctionRef(itemRef)
       local count = tonumber(quantity) or tonumber((type(itemRef) == "table" and (itemRef.quantity or itemRef.stackSize)) or 0) or 1
       if itemId and itemId ~= 0 then
         WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
       end
-    elseif event == "CHAT_MSG_SYSTEM" then
+    elseif event == "CHAT_MSG_SYSTEM" or event == "CHAT_MSG_LOOT" then
       local message = ...
-      HandleAuctionWonMessage(message)
+      local messageId = select(11, ...)
+      if ShouldHandleAuctionWonMessage(message, messageId) then
+        HandleAuctionWonMessage(message)
+      end
     end
   end)
   WSGH.UI.Shopping.purchaseListener = listener
+  if IsAuctionHouseOpen() then
+    StartAuctionChatPoller()
+  end
 end
 
 EnsurePurchaseListener()
