@@ -403,6 +403,35 @@ WSGH.Data.TinkerSpellIds = {
   [1250229] = true, -- Synapse Springs (Mark I)
 }
 
+-- Tooltip phrase matchers used by Scan/Tooltip.lua to detect applied tinkers.
+-- Structure:
+--   [locale] = { [spellId] = { "phrase 1", "phrase 2", ... } }
+-- Keep phrases short but specific to reduce false positives.
+WSGH.Data.TinkerTooltipTextByLocale = {
+  enUS = {
+    [54736] = { "emp generator", "Use: Stuns all nearby Mechanical units for" },
+    [54793] = { "frag belt", "Use: Detach and throw a thermal grenade" },
+    [54998] = { "pyro rocket", "Use: Fires an explosive rocket" },
+    [54999] = { "hyperspeed accelerators", "Use: Increases your haste by" },
+    [55002] = { "flexweave underlay", "Use: Reduces your falling speed for 30 sec." },
+    [55016] = { "nitro boosts", "Use: Greatly increase your run speed for" },
+    [63770] = { "reticulated armor webbing", "Use: Increases your armor by 700" },
+    [67839] = { "mind amplification dish", "Use: Engage in mental combat with a humanoid target" },
+    [82177] = { "quickflip deflection plates", "Use: Increases your armor by 1,500" },
+    [82180] = { "tazik shocker", "Fires an electrified ball at an enemy"},
+    [82200] = { "spinal healing injector", "Use: Injects a Mythical Healing Potion" },
+    [84424] = { "invisibility field", "Use: Activates a personal invisibiity field." },
+    [84425] = { "cardboard assassin", "Use: Summons a Cardboard Assassin to draw the attention of enemies." },
+    [84427] = { "grounded plasma shield", "Use: Procts you with a shield of force that stops" },
+    [108789] = { "phase fingers", "Use: Increases your dodge by"},
+    [109077] = { "incendiary fireworks launcher", "Use: Launches a cluster of highly explosive fireworks that detonate on impact"},
+    [109099] = { "watergliding jets", "Use: Allows you to walk on water and increases swim speed for" },
+    [126392] = { "goblin glider", "Use: Reduces your falling speed for 2 min." },
+    [126731] = { "synapse springs", "Your highest stat is always chosen" },
+    [1250229] = { "synapse springs", "Your highest stat is always chosen" },
+  },
+}
+
 -- Enchants applied via non-vellum consumables (e.g., armor kits, inscriptions).
 WSGH.Data.EnchantConsumableMap = {
   [6297] = 5421, -- Enchant: Fiery Blaze

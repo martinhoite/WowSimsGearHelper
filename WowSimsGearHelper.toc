@@ -14,6 +14,7 @@ Util.lua
 Importers/WowSimsV2.lua
 Import.lua
 
+Scan/Tooltip.lua
 Scan/Equipped.lua
 Scan/Bags.lua
 Scan.lua

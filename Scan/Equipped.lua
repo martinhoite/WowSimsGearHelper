@@ -81,6 +81,8 @@ function WSGH.Scan.Equipped.GetState()
     local emptySocketCount = 0
     local gemCount = 0
     local itemLevel = 0
+    local tooltipSocketCount = 0
+    local tooltipTinkerId = 0
 
     if link then
       local stats = GetItemStats(link) or {}
@@ -102,6 +104,12 @@ function WSGH.Scan.Equipped.GetState()
         gemsByIndex = {},
         maxGemSlot = 0,
       }
+      local tooltipInfo = WSGH.Scan.Tooltip and WSGH.Scan.Tooltip.GetInventoryItemInfo and WSGH.Scan.Tooltip.GetInventoryItemInfo("player", slotId) or nil
+      if tooltipInfo then
+        tooltipSocketCount = tonumber(tooltipInfo.socketCount) or 0
+        tooltipTinkerId = tonumber(tooltipInfo.tinkerId) or 0
+      end
+
       local entry = {
         slotKey = slotMeta.key,
         slotId = slotId,
@@ -113,11 +121,19 @@ function WSGH.Scan.Equipped.GetState()
         statsSocketCount = statsSocketCount,
         parsedMaxGemSlot = parsed.maxGemSlot or 0,
         itemLevel = itemLevel,
+        tooltipSocketCount = tooltipSocketCount,
+        tinkerId = tooltipTinkerId,
+        hasBeltBuckle = false,
       }
       for _ in pairs(parsed.gemsByIndex or {}) do
         gemCount = gemCount + 1
       end
-      entry.socketCount = math.max(parsed.maxGemSlot or 0, statsSocketCount, gemCount)
+      entry.socketCount = math.max(parsed.maxGemSlot or 0, statsSocketCount, gemCount, tooltipSocketCount)
+      if slotId == 6 and tooltipSocketCount > statsSocketCount then
+        entry.hasBeltBuckle = true
+      else
+        entry.hasBeltBuckle = BELT_BUCKLE_ENCHANTS[parsed.enchantId] == true
+      end
       equipped[slotId] = entry
   else
       equipped[slotId] = {
@@ -129,6 +145,9 @@ function WSGH.Scan.Equipped.GetState()
         gemsByIndex = {},
         socketCount = 0,
         itemLevel = 0,
+        hasBeltBuckle = false,
+        tooltipSocketCount = 0,
+        tinkerId = 0,
       }
     end
   end
@@ -183,6 +202,9 @@ function WSGH.Debug.DumpSlot(slotId)
   end
   local socketCount = math.max(parsed.maxGemSlot or 0, statsSocketCount, gemsPresent)
   local itemLevel = tonumber(GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link)) or select(4, GetItemInfo(link)) or 0
+  local tooltipInfo = WSGH.Scan.Tooltip and WSGH.Scan.Tooltip.GetInventoryItemInfo and WSGH.Scan.Tooltip.GetInventoryItemInfo("player", slotId) or nil
+  local tooltipSocketCount = tooltipInfo and tonumber(tooltipInfo.socketCount) or 0
+  local tooltipTinkerId = tooltipInfo and tonumber(tooltipInfo.tinkerId) or 0
 
   WSGH.Util.Print(("DumpSlot %d: itemId=%d enchantId=%d link=%s"):format(slotId, itemId, enchantId, link))
   WSGH.Util.Print(("Gems from link: %d, %d, %d, %d"):format(gems[1], gems[2], gems[3], gems[4]))
@@ -194,6 +216,8 @@ function WSGH.Debug.DumpSlot(slotId)
     parsed.maxGemSlot or 0,
     socketCount
   ))
+  WSGH.Util.Print(("Tooltip sockets: %d"):format(tooltipSocketCount))
+  WSGH.Util.Print(("Tooltip tinkerId: %d"):format(tooltipTinkerId))
   WSGH.Util.Print(("Item level: %d"):format(itemLevel))
   for stat, value in pairs(stats) do
     if type(stat) == "string" and stat:find("SOCKET") then
