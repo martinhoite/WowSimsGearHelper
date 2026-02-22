@@ -33,12 +33,14 @@ end
 WSGH.UI.Guide = WSGH.UI.Guide or {}
 local Guide = WSGH.UI.Guide
 Guide.currentAction = Guide.currentAction or nil
+Guide.tinkerSelectionRequestId = tonumber(Guide.tinkerSelectionRequestId) or 0
 
 local function ResetRuntimeState()
   EnsureUIState()
   WSGH.State.plan = nil
   WSGH.State.diff = nil
   Guide.currentAction = nil
+  Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   WSGH.UI.pendingPurchases = {}
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
@@ -283,6 +285,17 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
 
   -- MoP Classic primary path: legacy TradeSkill API.
   if hasLegacyTradeSkillApi then
+    -- Ensure the full list is visible before matching by name.
+    if type(SetTradeSkillItemNameFilter) == "function" then
+      pcall(SetTradeSkillItemNameFilter, "")
+    end
+    if type(SetTradeSkillInvSlotFilter) == "function" then
+      pcall(SetTradeSkillInvSlotFilter, -1, 1, 1)
+    end
+    if type(SetTradeSkillSubClassFilter) == "function" then
+      pcall(SetTradeSkillSubClassFilter, 0, 1, 1)
+    end
+
     local num = tonumber(GetNumTradeSkills()) or 0
     if type(ExpandTradeSkillSubClass) == "function" then
       for i = 1, num do
@@ -308,6 +321,20 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
 
     if candidateIndex then
       pcall(SelectTradeSkill, candidateIndex)
+      -- Legacy TradeSkill UI can keep stale visual state while open.
+      -- Force the selected row into view and refresh the panel so the
+      -- current recipe display tracks the programmatic selection.
+      if type(TradeSkillFrame_SetSelection) == "function" then
+        pcall(TradeSkillFrame_SetSelection, candidateIndex)
+      end
+      if TradeSkillListScrollFrame then
+        local visible = tonumber(_G.TRADE_SKILLS_DISPLAYED) or 8
+        local desiredOffset = math.max(0, candidateIndex - visible)
+        pcall(FauxScrollFrame_SetOffset, TradeSkillListScrollFrame, desiredOffset)
+      end
+      if type(TradeSkillFrame_Update) == "function" then
+        pcall(TradeSkillFrame_Update)
+      end
       if type(GetTradeSkillSelectionIndex) == "function" then
         local selected = tonumber(GetTradeSkillSelectionIndex()) or 0
         if selected == candidateIndex then
@@ -346,25 +373,73 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
   return false
 end
 
-local function TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft)
+local function IsEngineeringRecipeSelected(tinkerSpellId)
+  tinkerSpellId = tonumber(tinkerSpellId) or 0
+  if tinkerSpellId == 0 then return false end
+  local targetName = GetSpellInfo(tinkerSpellId)
+  if not targetName or targetName == "" then return false end
+  local targetNorm = WSGH.Util.NormalizeName(targetName, true)
+  if targetNorm == "" then return false end
+
+  if type(GetTradeSkillSelectionIndex) == "function" and type(GetTradeSkillInfo) == "function" then
+    local selected = tonumber(GetTradeSkillSelectionIndex()) or 0
+    if selected > 0 then
+      local selectedName, selectedType = GetTradeSkillInfo(selected)
+      if selectedType ~= "header" and selectedName and WSGH.Util.NormalizeName(selectedName, true) == targetNorm then
+        return true
+      end
+    end
+  end
+
+  if C_TradeSkillUI and C_TradeSkillUI.GetSelectedRecipeID and C_TradeSkillUI.GetRecipeInfo then
+    local recipeId = tonumber(C_TradeSkillUI.GetSelectedRecipeID()) or 0
+    if recipeId ~= 0 then
+      local info = C_TradeSkillUI.GetRecipeInfo(recipeId)
+      if info and WSGH.Util.NormalizeName(info.name, true) == targetNorm then
+        return true
+      end
+    end
+  end
+
+  return false
+end
+
+local function TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft, didForcedReopen, requestId)
   attemptsLeft = tonumber(attemptsLeft) or 0
   if attemptsLeft <= 0 then return false end
+  didForcedReopen = didForcedReopen and true or false
+  requestId = tonumber(requestId) or 0
+  if requestId == 0 then return false end
+  if requestId ~= (tonumber(Guide.tinkerSelectionRequestId) or 0) then
+    return false
+  end
   if not IsEngineeringWindowOpen() then
     if C_Timer and C_Timer.After and attemptsLeft > 1 then
       C_Timer.After(0.1, function()
-        TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft - 1)
+        TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft - 1, didForcedReopen, requestId)
       end)
     end
     return false
   end
 
-  if TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId) then
+  -- Always attempt selection, then verify the currently selected recipe.
+  -- This avoids first-open race conditions and supports re-click re-selection.
+  TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
+  if IsEngineeringRecipeSelected(tinkerSpellId) then
     return true
+  end
+
+  -- If selection keeps failing while the frame is open, force one reopen to
+  -- reset internal trade-skill state, then continue retries.
+  if not didForcedReopen and attemptsLeft <= 12 then
+    CloseEngineeringWindowIfOpen()
+    OpenEngineeringProfession()
+    didForcedReopen = true
   end
 
   if C_Timer and C_Timer.After and attemptsLeft > 1 then
     C_Timer.After(0.1, function()
-      TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft - 1)
+      TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft - 1, didForcedReopen, requestId)
     end)
   end
   return false
@@ -374,6 +449,7 @@ local function ExecuteSocketAction(action)
   local t = action and action.task
   if not t then return end
 
+  Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   CloseEngineeringWindowIfOpen()
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTargetsForSlot then
@@ -415,13 +491,16 @@ local function ExecuteEnchantAction(action)
   end
 
   if action.type == "APPLY_TINKER" then
+    Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
+    local requestId = Guide.tinkerSelectionRequestId
     local opened = OpenEngineeringProfession()
     if not opened then
       WSGH.Util.Print("Unable to open Engineering. Open your profession window and apply the tinker.")
     end
     OpenCharacterFrame()
-    TrySelectEngineeringRecipeWithRetry(tonumber(t.wantEnchantId) or 0, 20)
+    TrySelectEngineeringRecipeWithRetry(tonumber(t.wantEnchantId) or 0, 20, false, requestId)
   else
+    Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
     CloseEngineeringWindowIfOpen()
     if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
       WSGH.UI.Highlight.RequestEnchantBagRefresh()
@@ -440,6 +519,7 @@ end
 
 local function ExecuteSocketHintAction(rowData)
   if not rowData then return end
+  Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   CloseSocketFrameIfOpen()
   local slotId = tonumber(rowData.slotId) or 0
   local itemId = tonumber(rowData.socketHintItemId) or 0
@@ -1198,6 +1278,7 @@ end
 
 function WSGH.UI.Hide()
   if not WSGH.UI.frame then return end
+  Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   UnregisterUIEvents()
   WSGH.UI.frame:Hide()
   WSGH.DB.profile.ui.shown = false
