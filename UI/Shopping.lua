@@ -142,6 +142,25 @@ local function IsAuctionWonMessage(message)
   return false
 end
 
+local function IsLikelyAuctionWonChatMessage(message)
+  if IsAuctionWonMessage(message) then
+    return true
+  end
+  if not IsAuctionHouseOpen() then
+    return false
+  end
+  if type(message) ~= "string" or message == "" then
+    return false
+  end
+  -- Fallback for clients/locales where auction system text constants do not
+  -- pattern-match reliably: treat item-link chat lines while AH is open as
+  -- potential auction wins, then let HandleAuctionWonMessage parse/validate.
+  if message:find("|Hitem:", 1, true) and message:find("|h%[[^%]]+%]|h") then
+    return true
+  end
+  return false
+end
+
 local function PruneRecentAuctionMessageKeys(now)
   WSGH.UI.Shopping.recentAuctionMessageKeys = WSGH.UI.Shopping.recentAuctionMessageKeys or {}
   for key, seenAt in pairs(WSGH.UI.Shopping.recentAuctionMessageKeys) do
@@ -163,7 +182,7 @@ local function BuildAuctionWonMessageKey(message, messageId)
 end
 
 local function ShouldHandleAuctionWonMessage(message, messageId)
-  if not IsAuctionWonMessage(message) then
+  if not IsLikelyAuctionWonChatMessage(message) then
     return false
   end
 
@@ -174,7 +193,13 @@ local function ShouldHandleAuctionWonMessage(message, messageId)
   if not key then return false end
 
   local seenAt = tonumber(WSGH.UI.Shopping.recentAuctionMessageKeys[key]) or 0
-  if seenAt > 0 and (now - seenAt) < 30 then
+  local duplicateWindowSeconds = 30
+  if key:sub(1, 4) == "msg:" then
+    -- Text-only keys are less stable; keep only a short suppression window so
+    -- repeated same-item auction wins are not lost.
+    duplicateWindowSeconds = 3
+  end
+  if seenAt > 0 and (now - seenAt) < duplicateWindowSeconds then
     return false
   end
 
@@ -331,6 +356,18 @@ end
 IsAuctionHouseOpen = function()
   if AuctionHouseFrame and AuctionHouseFrame:IsShown() then return true end
   if AuctionFrame and AuctionFrame:IsShown() then return true end
+  if type(CanSendAuctionQuery) == "function" then
+    local ok, canQuery = pcall(CanSendAuctionQuery)
+    if ok and canQuery then
+      return true
+    end
+  end
+  if C_AuctionHouse and type(C_AuctionHouse.IsThrottledMessageSystemReady) == "function" then
+    local ok, ready = pcall(C_AuctionHouse.IsThrottledMessageSystemReady)
+    if ok and ready then
+      return true
+    end
+  end
   return false
 end
 
@@ -479,6 +516,9 @@ end
 
 function WSGH.UI.Shopping.UpdateShoppingList()
   if not WSGH.UI.shoppingFrame then return end
+  if IsAuctionHouseOpen() and not WSGH.UI.Shopping.auctionChatPollTicker then
+    StartAuctionChatPoller()
+  end
 
   local frame = WSGH.UI.shoppingFrame
   local scroll = WSGH.UI.shoppingScroll
