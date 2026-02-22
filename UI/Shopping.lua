@@ -465,6 +465,17 @@ local function RefreshAfterPurchase()
   end
 end
 
+function WSGH.UI.Shopping.ClearJPHighlight()
+  if not jpHighlightItemId then return end
+  if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
+    WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
+  end
+  if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.UpdateFromState then
+    WSGH.UI.Highlight.UpdateFromState()
+  end
+  jpHighlightItemId = nil
+end
+
 function WSGH.UI.Shopping.SearchAuctionHouseById(itemId)
   local name = GetItemInfo(itemId)
   if not name then return false end
@@ -668,23 +679,11 @@ function WSGH.UI.Shopping.UpdateShoppingList()
       end
 
       if currencyMissing <= 0 and jpHighlightItemId then
-        if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
-          WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
-        end
-        if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.UpdateFromState then
-          WSGH.UI.Highlight.UpdateFromState()
-        end
-        jpHighlightItemId = nil
+        WSGH.UI.Shopping.ClearJPHighlight()
       end
     else
       if jpHighlightItemId then
-        if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
-          WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
-        end
-        if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.UpdateFromState then
-          WSGH.UI.Highlight.UpdateFromState()
-        end
-        jpHighlightItemId = nil
+        WSGH.UI.Shopping.ClearJPHighlight()
       end
     end
   end
@@ -879,6 +878,12 @@ function WSGH.UI.Shopping.UpdateShoppingList()
             local jpSearchTexture = entry.search:GetNormalTexture()
             if jpSearchTexture then
               jpSearchTexture:SetVertexColor(1, 1, 1)
+              jpSearchTexture:ClearAllPoints()
+              jpSearchTexture:SetPoint("CENTER", entry.search, "CENTER", 0, 0)
+              jpSearchTexture:SetSize(
+                WSGH.Const.UI.shopping.searchIcon.width,
+                WSGH.Const.UI.shopping.searchIcon.height
+              )
             end
             entry.search:SetScript("OnEnter", function(self)
               GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -925,6 +930,9 @@ function WSGH.UI.Shopping.UpdateShoppingList()
             entry:Show()
 
             local countWidth = entry.count:GetStringWidth() or 0
+            if entry.countIcon and entry.countIcon:IsShown() then
+              countWidth = math.max(countWidth, entry.countIcon:GetWidth() or 0)
+            end
             local buttonWidth = entry.search:GetWidth() or 0
             local textWidth = entry.text:GetStringWidth() or 0
             local rowWidth = 14 + 16 + 6 + textWidth + 8 + countWidth + 8 + buttonWidth + 10
@@ -981,6 +989,12 @@ function WSGH.UI.Shopping.UpdateShoppingList()
             local searchTexture = entry.search:GetNormalTexture()
             if searchTexture then
               searchTexture:SetVertexColor(1, 1, 1)
+              searchTexture:ClearAllPoints()
+              searchTexture:SetPoint("CENTER", entry.search, "CENTER", 0, 0)
+              searchTexture:SetSize(
+                WSGH.Const.UI.shopping.searchIcon.width,
+                WSGH.Const.UI.shopping.searchIcon.height
+              )
             end
             entry.search:SetScript("OnEnter", function(self)
               GameTooltip:SetOwner(self, "ANCHOR_RIGHT")

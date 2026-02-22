@@ -94,6 +94,7 @@ WSGH.Const.UI = {
     entryHeight = 20,
     padding = 10,
     searchButton = { width = 20, height = 18 },
+    searchIcon = { width = 12, height = 12 },
     categories = { "Gems", "Enchants", "Other" },
   },
 }

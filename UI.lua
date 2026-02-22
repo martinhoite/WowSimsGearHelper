@@ -476,6 +476,10 @@ local function ExecuteSocketAction(action)
   local t = action and action.task
   if not t then return end
 
+  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
+    WSGH.UI.Shopping.ClearJPHighlight()
+  end
+
   Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   CloseEngineeringWindowIfOpen()
 
@@ -510,6 +514,10 @@ end
 local function ExecuteEnchantAction(action)
   local t = action and action.task
   if not t then return end
+
+  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
+    WSGH.UI.Shopping.ClearJPHighlight()
+  end
 
   CloseSocketFrameIfOpen()
 
@@ -546,6 +554,9 @@ end
 
 local function ExecuteSocketHintAction(rowData)
   if not rowData then return end
+  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
+    WSGH.UI.Shopping.ClearJPHighlight()
+  end
   Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   CloseSocketFrameIfOpen()
   local slotId = tonumber(rowData.slotId) or 0
