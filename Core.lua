@@ -3,7 +3,7 @@ local WSGH = _G.WowSimsGearHelper or {}
 _G.WowSimsGearHelper = WSGH
 
 WSGH.ADDON_NAME = ADDON_NAME
-WSGH.VERSION = "0.0.3"
+WSGH.VERSION = "0.0.4"
 
 local function EnsureDB()
   if type(_G.WowSimsGearHelperDB) ~= "table" then
@@ -56,6 +56,7 @@ function WSGH.Debug.List()
     "DumpSlot(slotId)",
     "DumpDiffRow(slotId)",
     "DebugSocketState(slotId)",
+    "SocketDiagnostics()",
     "DumpShoppingEntries(maxEntries)",
     "DumpShoppingRow(index)",
     "DumpShoppingItem(itemId)",

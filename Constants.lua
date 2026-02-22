@@ -72,6 +72,9 @@ WSGH.Const.VALOR_POINTS_PER_JP_COMMENDATION = 125
 WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_NON_GUILD = 500
 WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_GUILD = 600
 
+WSGH.Const.AUCTION_CHAT_POLL_INTERVAL_SECONDS = 0.5
+WSGH.Const.AUCTION_CHAT_RESYNC_HISTORY_LINES = 80
+
 
 -- Limits
 WSGH.Const.MAX_SOCKETS_RENDER = 3
@@ -91,8 +94,7 @@ WSGH.Const.UI = {
     entryHeight = 20,
     padding = 10,
     searchButton = { width = 20, height = 18 },
-    backdropColor = { 0, 0, 0, 0.85 },
-    borderColor = { 0, 0, 0, 1 },
+    searchIcon = { width = 12, height = 12 },
     categories = { "Gems", "Enchants", "Other" },
   },
 }

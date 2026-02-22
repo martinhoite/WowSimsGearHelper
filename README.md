@@ -1,5 +1,5 @@
 WowSims Gear Helper
-![Version](https://img.shields.io/badge/version-0.0.3-blue)
+![Version](https://img.shields.io/badge/version-0.0.4-blue)
 ===================
 
 
