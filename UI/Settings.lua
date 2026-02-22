@@ -68,8 +68,30 @@ local function BuildOptionsPanel()
   end)
   minimapCheck:SetScript("OnLeave", GameTooltip_Hide)
 
+  local useValorCheck = CreateFrame("CheckButton", nil, optionsPanel, "ChatConfigCheckButtonTemplate")
+  useValorCheck:SetPoint("TOPLEFT", minimapCheck, "BOTTOMLEFT", 0, -6)
+  useValorCheck.Text:SetText("Use Valor for upgrades")
+  useValorCheck:SetChecked(preferences.useValorForUpgrades == true)
+  useValorCheck:SetScript("OnClick", function(self)
+    local preferencesTable = GetPreferences()
+    if not preferencesTable then return end
+    local useValor = self:GetChecked() and true or false
+    preferencesTable.useValorForUpgrades = useValor
+    preferencesTable.upgradeCurrency = useValor and "VALOR" or "JUSTICE"
+    if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateShoppingList then
+      WSGH.UI.Shopping.UpdateShoppingList()
+    end
+  end)
+  useValorCheck:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Use Valor for upgrades", 1, 1, 1)
+    GameTooltip:AddLine("When enabled, shopping upgrade currency info uses Valor instead of Justice.", nil, nil, nil, true)
+    GameTooltip:Show()
+  end)
+  useValorCheck:SetScript("OnLeave", GameTooltip_Hide)
+
   local highlightLabel = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  highlightLabel:SetPoint("TOPLEFT", minimapCheck, "BOTTOMLEFT", 0, -16)
+  highlightLabel:SetPoint("TOPLEFT", useValorCheck, "BOTTOMLEFT", 0, -16)
   highlightLabel:SetText("Highlight style:")
 
   local highlightDrop = CreateFrame("Frame", "WSGHHighlightStyle", optionsPanel, "UIDropDownMenuTemplate")

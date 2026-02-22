@@ -29,6 +29,8 @@ local function EnsureDB()
       persistImports = false,
       savedImportText = nil,
       tinkers = {},
+      upgradeCurrency = "JUSTICE",
+      useValorForUpgrades = false,
     }
   end
   local prefs = _G.WowSimsGearHelperDB.profile.prefs
@@ -37,6 +39,8 @@ local function EnsureDB()
   if prefs.tinkers == nil then prefs.tinkers = {} end
   if prefs.minimap == nil then prefs.minimap = { hide = false } end
   if prefs.minimap.hide == nil then prefs.minimap.hide = false end
+  if prefs.upgradeCurrency == nil then prefs.upgradeCurrency = "JUSTICE" end
+  if prefs.useValorForUpgrades == nil then prefs.useValorForUpgrades = (prefs.upgradeCurrency == "VALOR") end
 
   WSGH.DB = _G.WowSimsGearHelperDB
 end

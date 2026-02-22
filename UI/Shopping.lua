@@ -3,6 +3,7 @@ WSGH.UI = WSGH.UI or {}
 WSGH.UI.Shopping = WSGH.UI.Shopping or {}
 
 local DEBUG_SHOPPING = false
+local jpHighlightItemId = nil
 
 local function DebugShopping(msg)
   if not DEBUG_SHOPPING then return end
@@ -13,7 +14,7 @@ end
 
 local function ResolveKnownNeededItemIdByName(itemName)
   if type(itemName) ~= "string" or itemName == "" then return 0 end
-  local wantedName = WSGH.Util.NormalizeName(itemName)
+  local wantedName = WSGH.Util.NormalizeName(itemName, true)
   if wantedName == "" then return 0 end
   local diff = WSGH.State and WSGH.State.diff
   if not (diff and diff.rows) then return 0 end
@@ -48,7 +49,7 @@ local function ResolveKnownNeededItemIdByName(itemName)
     if not knownName and C_Item and C_Item.RequestLoadItemDataByID then
       C_Item.RequestLoadItemDataByID(itemId)
     end
-    if knownName and WSGH.Util.NormalizeName(knownName) == wantedName then
+    if knownName and WSGH.Util.NormalizeName(knownName, true) == wantedName then
       return itemId
     end
   end
@@ -83,7 +84,11 @@ local function HandleAuctionWonMessage(message)
     local count = tonumber(message:match("|rx(%d+)")) or tonumber(message:match("(%d+)%s*x")) or tonumber(message:match("x(%d+)")) or 1
     WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
     if bracketName and WSGH.UI.pendingPurchasesByName then
-      WSGH.UI.pendingPurchasesByName[bracketName] = nil
+      local pendingKey = WSGH.Util.NormalizeName(bracketName, true)
+      if pendingKey == "" then
+        pendingKey = bracketName
+      end
+      WSGH.UI.pendingPurchasesByName[pendingKey] = nil
     end
     return
   end
@@ -166,6 +171,87 @@ local function IsAuctionHouseOpen()
   return false
 end
 
+local function CountItemInBags(itemId, bagIndex)
+  itemId = tonumber(itemId) or 0
+  if itemId == 0 then return 0 end
+  local count = 0
+  for _, location in ipairs((bagIndex and bagIndex[itemId]) or {}) do
+    count = count + (tonumber(location.count) or 1)
+  end
+  return count
+end
+
+local function GetCurrencyAmountAndIcon(currencyId)
+  currencyId = tonumber(currencyId) or 0
+  if currencyId == 0 then return 0, nil end
+
+  if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+    local info = C_CurrencyInfo.GetCurrencyInfo(currencyId)
+    if type(info) == "table" then
+      local quantity = tonumber(info.quantity) or tonumber(info.totalQuantity) or tonumber(info.amount)
+      if quantity then
+        local icon = info.iconFileID or info.icon or info.displayInfo
+        return quantity, icon
+      end
+    end
+  end
+
+  if GetCurrencyInfo then
+    local _, amount, icon = GetCurrencyInfo(currencyId)
+    amount = tonumber(amount) or 0
+    return amount, icon
+  end
+
+  return 0, nil
+end
+
+local function ShowCurrencyTooltip(owner, currencyId)
+  if not owner then return end
+  currencyId = tonumber(currencyId) or 0
+  if currencyId == 0 then return end
+  GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+  if GameTooltip.SetCurrencyByID then
+    GameTooltip:SetCurrencyByID(currencyId)
+    GameTooltip:Show()
+    return
+  end
+  local name, amount, icon = GetCurrencyInfo(currencyId)
+  if name then
+    GameTooltip:SetText(name)
+    GameTooltip:AddLine(("Amount: %d"):format(tonumber(amount) or 0), 1, 1, 1, true)
+    if icon then
+      GameTooltip:AddLine(("Icon: %s"):format(tostring(icon)), 0.8, 0.8, 0.8, true)
+    end
+  else
+    GameTooltip:SetText(("Currency %d"):format(currencyId))
+  end
+  GameTooltip:Show()
+end
+
+local function GetUpgradeCurrencyConfig()
+  local preferences = WSGH.Util and WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or {}
+  local useValor = preferences and preferences.useValorForUpgrades == true
+  if useValor then
+    return {
+      key = "VALOR",
+      short = "VP",
+      currencyId = WSGH.Const.VALOR_POINTS_CURRENCY_ID,
+      perUpgradeStep = WSGH.Const.VALOR_POINTS_PER_UPGRADE_STEP,
+      commendationItemId = WSGH.Const.VALOR_POINTS_COMMENDATION_ITEM_ID,
+      cap = 3000,
+    }
+  end
+
+  return {
+    key = "JUSTICE",
+    short = "JP",
+    currencyId = WSGH.Const.JUSTICE_POINTS_CURRENCY_ID,
+    perUpgradeStep = WSGH.Const.JUSTICE_POINTS_PER_UPGRADE_STEP,
+    commendationItemId = WSGH.Const.JUSTICE_POINTS_COMMENDATION_ITEM_ID,
+    cap = 4000,
+  }
+end
+
 local function RefreshAfterPurchase()
   if not (WSGH.UI and WSGH.UI.frame and WSGH.UI.frame:IsShown()) then
     return
@@ -216,8 +302,12 @@ end
 function WSGH.UI.Shopping.RecordAuctionWinByName(itemName, count)
   if type(itemName) ~= "string" or itemName == "" then return end
   count = tonumber(count) or 1
+  local key = WSGH.Util.NormalizeName(itemName, true)
+  if key == "" then
+    key = itemName
+  end
   WSGH.UI.pendingPurchasesByName = WSGH.UI.pendingPurchasesByName or {}
-  WSGH.UI.pendingPurchasesByName[itemName] = (WSGH.UI.pendingPurchasesByName[itemName] or 0) + count
+  WSGH.UI.pendingPurchasesByName[key] = (WSGH.UI.pendingPurchasesByName[key] or 0) + count
   DebugShopping(("[Shopping] Auction win recorded by name: %s x%d"):format(itemName, count))
   RefreshAfterPurchase()
 end
@@ -258,12 +348,13 @@ function WSGH.UI.Shopping.UpdateShoppingList()
     end
   end
 
-  local categoryOrder = WSGH.Const and WSGH.Const.UI and WSGH.Const.UI.shopping and WSGH.Const.UI.shopping.categories or { "Gems", "Enchants", "Other" }
+  local categoryOrder = WSGH.Const.UI.shopping.categories
   local itemsByCategory = {}
   for _, cat in ipairs(categoryOrder) do itemsByCategory[cat] = {} end
   itemsByCategory["Other"] = itemsByCategory["Other"] or {}
 
   if diff and diff.rows then
+    local upgradeStepsNeeded = 0
     for _, row in ipairs(diff.rows) do
       for _, task in ipairs(row.socketTasks or {}) do
         if task.status and task.status ~= WSGH.Const.STATUS_OK then
@@ -307,6 +398,80 @@ function WSGH.UI.Shopping.UpdateShoppingList()
         if remaining > 0 then
           AccumulateNeed(extraId, remaining, "Other")
         end
+      end
+
+      for _, task in ipairs(row.upgradeTasks or {}) do
+        if task.status and task.status ~= WSGH.Const.STATUS_OK then
+          upgradeStepsNeeded = upgradeStepsNeeded + 1
+        end
+      end
+    end
+
+    if upgradeStepsNeeded > 0 then
+      local currencyConfig = GetUpgradeCurrencyConfig()
+      local commendationItemId = tonumber(currencyConfig.commendationItemId)
+      local commendationsInBags = CountItemInBags(commendationItemId, bagIndex)
+      local currencyAmount, currencyIcon = GetCurrencyAmountAndIcon(currencyConfig.currencyId)
+      local currencyPerUpgradeStep = tonumber(currencyConfig.perUpgradeStep)
+      local currencyCap = tonumber(currencyConfig.cap)
+      local currencyNeeded = upgradeStepsNeeded * currencyPerUpgradeStep
+      local currencyMissing = currencyNeeded - currencyAmount
+      if currencyMissing < 0 then currencyMissing = 0 end
+
+      local jpPerCommNonGuild = WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_NON_GUILD
+      local jpPerCommGuild = WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_GUILD
+      local valorPerJpComm = WSGH.Const.VALOR_POINTS_PER_JP_COMMENDATION
+      local isInGuild = (IsInGuild and IsInGuild()) and true or false
+      local jpPerComm = isInGuild and jpPerCommGuild or jpPerCommNonGuild
+      local neededComm = 0
+      local neededValor = 0
+      if currencyConfig.key == "JUSTICE" and currencyMissing > 0 then
+        neededComm = math.ceil(currencyMissing / math.max(jpPerComm, 1))
+        neededValor = neededComm * valorPerJpComm
+      end
+
+      if currencyMissing > 0 then
+        local bucket = itemsByCategory["Other"] or {}
+        itemsByCategory["Other"] = bucket
+        bucket[#bucket + 1] = {
+          isCurrency = true,
+          currencyKey = currencyConfig.key,
+          currencyShort = currencyConfig.short,
+          currencyId = currencyConfig.currencyId,
+          currencyAmount = currencyAmount,
+          currencyCap = currencyCap,
+          currencyIcon = currencyIcon,
+          upgradeStepsNeeded = upgradeStepsNeeded,
+          currencyNeeded = currencyNeeded,
+          currencyMissing = currencyMissing,
+          isInGuild = isInGuild,
+          jpPerComm = jpPerComm,
+          neededComm = neededComm,
+          neededValor = neededValor,
+          actionItemId = commendationItemId,
+          actionItemCount = commendationsInBags,
+          category = "Other",
+        }
+      end
+
+      if currencyMissing <= 0 and jpHighlightItemId then
+        if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
+          WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
+        end
+        if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.UpdateFromState then
+          WSGH.UI.Highlight.UpdateFromState()
+        end
+        jpHighlightItemId = nil
+      end
+    else
+      if jpHighlightItemId then
+        if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
+          WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
+        end
+        if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.UpdateFromState then
+          WSGH.UI.Highlight.UpdateFromState()
+        end
+        jpHighlightItemId = nil
       end
     end
   end
@@ -414,6 +579,12 @@ function WSGH.UI.Shopping.UpdateShoppingList()
           entry.text:SetTextColor(1, 0.82, 0, 1)
           if entry.strike then entry.strike:Hide() end
           entry.count:SetText("")
+          if entry.countIcon then
+            entry.countIcon:Hide()
+            entry.countIcon.itemId = nil
+            entry.countIcon:SetScript("OnEnter", nil)
+            entry.countIcon:SetScript("OnLeave", nil)
+          end
           entry.search:SetShown(false)
           entry.search:SetEnabled(false)
           entry.itemId = nil
@@ -424,78 +595,218 @@ function WSGH.UI.Shopping.UpdateShoppingList()
           local rowWidth = 14 + textWidth + 10
           if rowWidth > maxRowWidth then maxRowWidth = rowWidth end
         else
-          DebugShopping(("entry %d item %d need %d"):format(offset + i, data.itemId, data.count))
-          local name, _, _, _, _, _, _, _, _, icon = GetItemInfo(data.itemId)
-          if not name or not icon then
-            local itemIcon = select(5, GetItemInfoInstant(data.itemId))
-            icon = icon or itemIcon
-            if C_Item and C_Item.RequestLoadItemDataByID then
-              C_Item.RequestLoadItemDataByID(data.itemId)
-            end
-          end
-          entry.icon:SetTexture(icon or WSGH.Const.ICON_PURCHASE)
-          entry.icon:Show()
-          entry.icon.itemId = data.itemId
-          entry.text:SetFontObject("GameFontNormalSmall")
-          entry.text:SetText(name or ("Item " .. data.itemId))
-          local isFullyPurchased = (tonumber(data.bought) or 0) >= (tonumber(data.totalNeeded) or 0) and (tonumber(data.totalNeeded) or 0) > 0
-          if isFullyPurchased then
-            entry.text:SetTextColor(0.72, 0.72, 0.72, 1)
-            if entry.strike then
-              entry.strike:ClearAllPoints()
-              entry.strike:SetPoint("LEFT", entry.text, "LEFT", 0, 0)
-              entry.strike:SetPoint("RIGHT", entry.count, "RIGHT", 0, 0)
-              entry.strike:SetPoint("CENTER", entry.text, "CENTER", 0, 0)
-              entry.strike:Show()
-            end
-          else
+          if data.isCurrency then
+            local actionItemId = tonumber(data.actionItemId) or 0
+            local icon = data.currencyIcon
+            local actionItemCount = tonumber(data.actionItemCount) or 0
+            local currencyShort = tostring(data.currencyShort or "JP")
+            local currentValue = tonumber(data.currencyAmount) or 0
+            local currencyCap = tonumber(data.currencyCap) or 4000
+            local currencyNeeded = tonumber(data.currencyNeeded) or 0
+            local currencyMissing = tonumber(data.currencyMissing) or 0
+            local upgrades = tonumber(data.upgradeStepsNeeded) or 0
+            local currencyId = tonumber(data.currencyId) or 0
+            local upgradesLabel = WSGH.Util.FormatCountNoun(upgrades, "upgrade")
+
+            entry.icon:SetTexture(icon or WSGH.Const.ICON_PURCHASE)
+            entry.icon:Show()
+            entry.icon.itemId = nil
+            entry.text:SetFontObject("GameFontNormalSmall")
+            entry.text:SetText(("%s: %d/%d | Missing: %d (%s)"):format(currencyShort, currentValue, currencyCap, currencyMissing, upgradesLabel))
             entry.text:SetTextColor(1, 1, 1, 1)
             if entry.strike then entry.strike:Hide() end
-          end
-          local totalNeeded = tonumber(data.totalNeeded) or tonumber(data.count) or 0
-          local bought = data.bought or 0
-          if bought > totalNeeded then
-            bought = totalNeeded
-          end
-          if bought > 0 then
-            entry.count:SetText(("x%d (%d/%d bought)"):format(data.count, bought, totalNeeded))
-          else
-            entry.count:SetText("x" .. data.count)
-          end
-          entry.search:SetShown(true)
-          entry.search:SetEnabled(true)
-          entry.search.itemId = data.itemId
-          entry.search:SetText("")
-          entry.search:SetNormalTexture(WSGH.Const.ICON_SEARCH)
-          local searchTexture = entry.search:GetNormalTexture()
-          if searchTexture then
-            searchTexture:SetVertexColor(1, 1, 1)
-          end
-          if isFullyPurchased then
-            entry.count:SetTextColor(0.72, 0.72, 0.72, 1)
-          else
+            entry.count:SetText("")
             entry.count:SetTextColor(1, 1, 1, 1)
-          end
-          entry.itemId = data.itemId
-          entry:SetScript("OnEnter", function(self)
-            local id = self.itemId
-            if not id or id == 0 then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetItemByID(id)
-            GameTooltip:Show()
-          end)
-          entry:SetScript("OnLeave", GameTooltip_Hide)
-          entry:Show()
+            if entry.countIcon then
+              local _, _, _, _, _, _, _, _, _, commIcon = GetItemInfo(actionItemId)
+              if not commIcon then
+                commIcon = select(5, GetItemInfoInstant(actionItemId))
+              end
+              if actionItemId ~= 0 and commIcon then
+                entry.countIcon.texture:SetTexture(commIcon)
+                entry.countIcon.itemId = actionItemId
+                entry.countIcon:SetScript("OnEnter", function(self)
+                  local id = tonumber(self.itemId) or 0
+                  if id == 0 then return end
+                  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                  GameTooltip:SetItemByID(id)
+                  GameTooltip:Show()
+                end)
+                entry.countIcon:SetScript("OnLeave", GameTooltip_Hide)
+                entry.countIcon:Show()
+              else
+                entry.countIcon:Hide()
+                entry.countIcon.itemId = nil
+                entry.countIcon:SetScript("OnEnter", nil)
+                entry.countIcon:SetScript("OnLeave", nil)
+              end
+            end
 
-          local countWidth = entry.count:GetStringWidth() or 0
-          local buttonWidth = entry.search:GetWidth() or 0
-          local textWidth = entry.text:GetStringWidth() or 0
-          local rowWidth = 14 + 16 + 6 + textWidth + 8 + countWidth + 8 + buttonWidth + 10
-          if rowWidth > maxRowWidth then maxRowWidth = rowWidth end
+            entry.search:SetShown(true)
+            entry.search:SetEnabled(actionItemId ~= 0)
+            entry.search.itemId = actionItemId
+            entry.search:SetWidth(WSGH.Const.UI.shopping.searchButton.width)
+            entry.search:SetText("")
+            entry.search:SetNormalTexture(WSGH.Const.ICON_SEARCH)
+            local jpSearchTexture = entry.search:GetNormalTexture()
+            if jpSearchTexture then
+              jpSearchTexture:SetVertexColor(1, 1, 1)
+            end
+            entry.search:SetScript("OnEnter", function(self)
+              GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+              local actionCount = tonumber(data.actionItemCount) or 0
+              local jpPerCommNonGuild = WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_NON_GUILD
+              local valorPerJpComm = WSGH.Const.VALOR_POINTS_PER_JP_COMMENDATION
+              local commNeeded = tonumber(data.neededComm) or 0
+              local valorNeeded = tonumber(data.neededValor) or 0
+              local jpPerComm = tonumber(data.jpPerComm) or jpPerCommNonGuild
+              local isInGuild = data.isInGuild == true
+              GameTooltip:SetText("Highlight in bags")
+              GameTooltip:AddLine(("Highlight Commendation of Justice in bags (%d available)."):format(actionCount), 1, 1, 1, true)
+              GameTooltip:AddLine(("Commendation conversion: %d JP each, costs %d VP each."):format(
+                jpPerComm,
+                valorPerJpComm
+              ), 0.8, 0.8, 0.8, true)
+              if tostring(data.currencyKey) == "JUSTICE" then
+                GameTooltip:AddLine(("Needed commendations: %d | VP cost: %d"):format(
+                  commNeeded,
+                  valorNeeded
+                ), 0.8, 0.8, 0.8, true)
+                if not isInGuild then
+                  GameTooltip:AddLine("Not in a guild: join one for +100 JP per commendation.", 1, 0.2, 0.2, true)
+                end
+              end
+              GameTooltip:Show()
+            end)
+            entry.search:SetScript("OnLeave", GameTooltip_Hide)
+            entry.search:SetScript("OnClick", function(self)
+              local id = tonumber(self.itemId) or 0
+              if id == 0 then return end
+              WSGH.Util.OpenBagsForGuidance()
+              if WSGH.UI and WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
+                WSGH.UI.Highlight.SetSocketHintTarget(id, nil, nil)
+              end
+              jpHighlightItemId = id
+            end)
+
+            entry.itemId = nil
+            entry:SetScript("OnEnter", function(self)
+              ShowCurrencyTooltip(self, currencyId)
+            end)
+            entry:SetScript("OnLeave", GameTooltip_Hide)
+            entry:Show()
+
+            local countWidth = entry.count:GetStringWidth() or 0
+            local buttonWidth = entry.search:GetWidth() or 0
+            local textWidth = entry.text:GetStringWidth() or 0
+            local rowWidth = 14 + 16 + 6 + textWidth + 8 + countWidth + 8 + buttonWidth + 10
+            if rowWidth > maxRowWidth then maxRowWidth = rowWidth end
+          else
+            if entry.countIcon then
+              entry.countIcon:Hide()
+              entry.countIcon.itemId = nil
+              entry.countIcon:SetScript("OnEnter", nil)
+              entry.countIcon:SetScript("OnLeave", nil)
+            end
+            DebugShopping(("entry %d item %d need %d"):format(offset + i, data.itemId, data.count))
+            local name, _, _, _, _, _, _, _, _, icon = GetItemInfo(data.itemId)
+            if not name or not icon then
+              local itemIcon = select(5, GetItemInfoInstant(data.itemId))
+              icon = icon or itemIcon
+              if C_Item and C_Item.RequestLoadItemDataByID then
+                C_Item.RequestLoadItemDataByID(data.itemId)
+              end
+            end
+            entry.icon:SetTexture(icon or WSGH.Const.ICON_PURCHASE)
+            entry.icon:Show()
+            entry.icon.itemId = data.itemId
+            entry.text:SetFontObject("GameFontNormalSmall")
+            entry.text:SetText(name or ("Item " .. data.itemId))
+            local isFullyPurchased = (tonumber(data.bought) or 0) >= (tonumber(data.totalNeeded) or 0) and (tonumber(data.totalNeeded) or 0) > 0
+            if isFullyPurchased then
+              entry.text:SetTextColor(0.72, 0.72, 0.72, 1)
+            else
+              entry.text:SetTextColor(1, 1, 1, 1)
+            end
+            if entry.strike then entry.strike:Hide() end
+            local totalNeeded = tonumber(data.totalNeeded) or tonumber(data.count) or 0
+            local bought = data.bought or 0
+            if bought > totalNeeded then
+              bought = totalNeeded
+            end
+            if bought > 0 and not isFullyPurchased then
+              entry.count:SetText(("x%d (%d/%d bought)"):format(data.count, bought, totalNeeded))
+            else
+              entry.count:SetText("x" .. data.count)
+            end
+            entry.search:SetShown(true)
+            entry.search:SetEnabled(true)
+            entry.search.itemId = data.itemId
+            entry.search:SetWidth(WSGH.Const.UI.shopping.searchButton.width)
+            entry.search:SetText("")
+            if isFullyPurchased then
+              entry.search:SetNormalTexture(WSGH.Const.ICON_READY)
+            else
+              entry.search:SetNormalTexture(WSGH.Const.ICON_SEARCH)
+            end
+            local searchTexture = entry.search:GetNormalTexture()
+            if searchTexture then
+              searchTexture:SetVertexColor(1, 1, 1)
+            end
+            entry.search:SetScript("OnEnter", function(self)
+              GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+              if isFullyPurchased then
+                GameTooltip:SetText("Purchased")
+                GameTooltip:AddLine(("%d/%d bought already."):format(bought, totalNeeded), 1, 1, 1, true)
+                GameTooltip:AddLine("Loot your mailbox to finish receiving these items.", 0.85, 0.85, 0.85, true)
+              else
+                local itemName = self.itemId and GetItemInfo(self.itemId)
+                GameTooltip:SetText("Search Auction House")
+                GameTooltip:AddLine(itemName or "Search this item in the Auction House.", 1, 1, 1, true)
+              end
+              GameTooltip:Show()
+            end)
+            entry.search:SetScript("OnLeave", GameTooltip_Hide)
+            entry.search:SetScript("OnClick", function(self)
+              if isFullyPurchased then return end
+              if not self.itemId then return end
+              local ok = WSGH.UI.Shopping.SearchAuctionHouseById(self.itemId)
+              if not ok then
+                WSGH.Util.Print("Open the Auction House and try again.")
+              end
+            end)
+            if isFullyPurchased then
+              entry.count:SetTextColor(0.72, 0.72, 0.72, 1)
+            else
+              entry.count:SetTextColor(1, 1, 1, 1)
+            end
+            entry.itemId = data.itemId
+            entry:SetScript("OnEnter", function(self)
+              local id = self.itemId
+              if not id or id == 0 then return end
+              GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+              GameTooltip:SetItemByID(id)
+              GameTooltip:Show()
+            end)
+            entry:SetScript("OnLeave", GameTooltip_Hide)
+            entry:Show()
+
+            local countWidth = entry.count:GetStringWidth() or 0
+            local buttonWidth = entry.search:GetWidth() or 0
+            local textWidth = entry.text:GetStringWidth() or 0
+            local rowWidth = 14 + 16 + 6 + textWidth + 8 + countWidth + 8 + buttonWidth + 10
+            if rowWidth > maxRowWidth then maxRowWidth = rowWidth end
+          end
         end
       else
         entry:Hide()
         if entry.strike then entry.strike:Hide() end
+        if entry.countIcon then
+          entry.countIcon:Hide()
+          entry.countIcon.itemId = nil
+          entry.countIcon:SetScript("OnEnter", nil)
+          entry.countIcon:SetScript("OnLeave", nil)
+        end
         entry.search:SetShown(false)
       end
     end
@@ -503,15 +814,18 @@ function WSGH.UI.Shopping.UpdateShoppingList()
     height = height + (rowsShown * entryHeight) + padding
   end
 
-  local minWidth = (WSGH.Const and WSGH.Const.UI and WSGH.Const.UI.shopping and WSGH.Const.UI.shopping.sidebarWidth) or 220
+  local minWidth = WSGH.Const.UI.shopping.sidebarWidth
   local targetWidth = math.max(minWidth, maxRowWidth)
   frame:SetWidth(targetWidth)
   for _, entry in ipairs(entries) do
     entry:SetWidth(targetWidth - 24)
-    local countWidth = entry.count:GetStringWidth() or 0
-    local buttonWidth = entry.search:GetWidth() or 0
-    local availableTextWidth = targetWidth - 24 - (16 + 6) - (countWidth + 8) - (buttonWidth + 8)
-    entry.text:SetWidth(math.max(availableTextWidth, 50))
+    entry.text:ClearAllPoints()
+    entry.text:SetPoint("LEFT", entry.icon, "RIGHT", 6, 0)
+    if entry.search:IsShown() then
+      entry.text:SetPoint("RIGHT", entry.count, "LEFT", -8, 0)
+    else
+      entry.text:SetPoint("RIGHT", entry, "RIGHT", -10, 0)
+    end
   end
   frame:SetHeight(math.max(height + padding, 120))
 end
@@ -619,7 +933,6 @@ local function EnsurePurchaseListener()
     pcall(listener.RegisterEvent, listener, "AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION")
   end
   listener:RegisterEvent("CHAT_MSG_SYSTEM")
-  listener:RegisterEvent("CHAT_MSG_LOOT")
   listener:SetScript("OnEvent", function(_, event, ...)
     if event == "AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION" or event == "AUCTION_HOUSE_SHOW_ITEM_WON_NOTIFICATION" then
       local itemRef, quantity = ...
@@ -628,7 +941,7 @@ local function EnsurePurchaseListener()
       if itemId and itemId ~= 0 then
         WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
       end
-    elseif event == "CHAT_MSG_SYSTEM" or event == "CHAT_MSG_LOOT" then
+    elseif event == "CHAT_MSG_SYSTEM" then
       local message = ...
       HandleAuctionWonMessage(message)
     end

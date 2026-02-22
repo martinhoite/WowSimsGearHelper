@@ -64,6 +64,30 @@ local function NormalizeTinkerId(rawTinkerId)
   return rawTinkerId
 end
 
+local function NormalizeUpgradeStep(rawUpgradeStep)
+  if rawUpgradeStep == nil then return 0 end
+
+  if type(rawUpgradeStep) == "number" then
+    local n = tonumber(rawUpgradeStep) or 0
+    if n < 0 then return 0 end
+    if n > 2 then return 2 end
+    return n
+  end
+
+  if type(rawUpgradeStep) ~= "string" then
+    return 0
+  end
+
+  local normalized = rawUpgradeStep:gsub("%s+", ""):lower()
+  if normalized == "upgradestepone" then return 1 end
+  if normalized == "upgradesteptwo" then return 2 end
+
+  local trailingNumber = tonumber(normalized:match("(%d+)$")) or 0
+  if trailingNumber <= 0 then return 0 end
+  if trailingNumber > 2 then return 2 end
+  return trailingNumber
+end
+
 function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
   if type(decoded) ~= "table" then
     return nil, "Export is not an object"
@@ -118,6 +142,7 @@ function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
       expectedEnchantUnsupported = enchantUnsupported,
       expectedReforgeId = tonumber(e.reforging) or 0,
       upgradeStep = e.upgradeStep,
+      expectedUpgradeStep = NormalizeUpgradeStep(e.upgradeStep),
       randomSuffix = tonumber(e.randomSuffix) or 0,
       tinkerId = NormalizeTinkerId(e.tinker)
     }

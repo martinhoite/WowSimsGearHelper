@@ -357,6 +357,35 @@ local function DetectTinkerFromLines(lines)
   return bestSpellId
 end
 
+local function DetectUpgradeLevelFromLines(lines)
+  local bestCurrent = 0
+  local bestMax = 0
+  local found = false
+
+  for _, line in ipairs(lines or {}) do
+    if type(line) == "string" and line ~= "" then
+      local lowered = (WSGH.Util and WSGH.Util.SafeLower and WSGH.Util.SafeLower(line)) or line:lower()
+      if lowered:find("upgrade level", 1, true) then
+        local cur, max = line:match("(%d+)%s*/%s*(%d+)")
+        cur = tonumber(cur) or 0
+        max = tonumber(max) or 0
+        if max > 0 then
+          found = true
+          if max > bestMax or (max == bestMax and cur > bestCurrent) then
+            bestCurrent = cur
+            bestMax = max
+          end
+        end
+      end
+    end
+  end
+
+  if not found then
+    return 0, 0
+  end
+  return bestCurrent, bestMax
+end
+
 function WSGH.Scan.Tooltip.Initialize()
   EnsureScanner()
   BuildSocketLineSet()
@@ -366,9 +395,12 @@ end
 function WSGH.Scan.Tooltip.GetInventoryItemInfo(unit, slotId)
   if not unit or not slotId then return nil end
   local lines = ReadTooltipLinesForInventoryItem(unit, slotId)
+  local upgradeLevel, upgradeMax = DetectUpgradeLevelFromLines(lines)
   return {
     socketCount = CountSocketsFromLines(lines),
     tinkerId = DetectTinkerFromLines(lines),
+    upgradeLevel = upgradeLevel,
+    upgradeMax = upgradeMax,
   }
 end
 
@@ -402,6 +434,25 @@ function WSGH.Debug.DumpTooltipTinker(slotId)
   if #lines == 0 then
     WSGH.Util.Print("  No tooltip text captured for this slot.")
   end
+  for i, line in ipairs(lines) do
+    WSGH.Util.Print(("  [%d] %s"):format(i, tostring(line)))
+  end
+end
+
+function WSGH.Debug.DumpTooltipUpgrade(slotId)
+  slotId = tonumber(slotId) or 0
+  if slotId == 0 then
+    WSGH.Util.Print("DumpTooltipUpgrade: provide slotId.")
+    return
+  end
+  local lines, source = ReadTooltipLinesForInventoryItem("player", slotId)
+  local current, max = DetectUpgradeLevelFromLines(lines)
+  WSGH.Util.Print(("DumpTooltipUpgrade slot %d source %s => %d/%d"):format(
+    slotId,
+    tostring(source or "unknown"),
+    tonumber(current) or 0,
+    tonumber(max) or 0
+  ))
   for i, line in ipairs(lines) do
     WSGH.Util.Print(("  [%d] %s"):format(i, tostring(line)))
   end
