@@ -486,6 +486,10 @@ function WSGH.UI.Shopping.UpdateShoppingList()
   local visibleEntries = #entries
   local empty = WSGH.UI.shoppingEmpty
   local title = WSGH.UI.shoppingTitle
+  local byline = WSGH.UI.shoppingByline
+  if byline then
+    byline:SetWidth(math.max((frame:GetWidth() or WSGH.Const.UI.shopping.sidebarWidth) - 28, 120))
+  end
   WSGH.UI.pendingPurchases = WSGH.UI.pendingPurchases or {}
   WSGH.UI.pendingPurchasesByName = WSGH.UI.pendingPurchasesByName or {}
   local bagIndex = WSGH.Scan.GetBagIndex and WSGH.Scan.GetBagIndex() or {}
@@ -517,10 +521,14 @@ function WSGH.UI.Shopping.UpdateShoppingList()
   local itemsByCategory = {}
   for _, cat in ipairs(categoryOrder) do itemsByCategory[cat] = {} end
   itemsByCategory["Other"] = itemsByCategory["Other"] or {}
+  local hasPendingEquipTasks = false
 
   if diff and diff.rows then
     local upgradeStepsNeeded = 0
     for _, row in ipairs(diff.rows) do
+      if row.rowStatus == "WRONG_ITEM" then
+        hasPendingEquipTasks = true
+      end
       for _, task in ipairs(row.socketTasks or {}) do
         if task.status and task.status ~= WSGH.Const.STATUS_OK then
           local wantGemId = tonumber(task.wantGemId) or 0
@@ -641,6 +649,16 @@ function WSGH.UI.Shopping.UpdateShoppingList()
     end
   end
 
+  if byline then
+    if hasPendingEquipTasks then
+      byline:SetText("List may be incomplete as some planned items are not equipped yet.")
+      byline:Show()
+    else
+      byline:SetText("")
+      byline:Hide()
+    end
+  end
+
   -- Fallback: if row-based scan yielded nothing, fall back to flat tasks.
   if next(needsByItem) == nil and diff and diff.tasks then
     for _, task in ipairs(diff.tasks) do
@@ -721,7 +739,11 @@ function WSGH.UI.Shopping.UpdateShoppingList()
   end
 
   local padding = WSGH.Const.UI.shopping.padding
-  local height = padding + (title and title:GetStringHeight() or 0) + 6
+  local bylineHeight = 0
+  if byline and byline:IsShown() then
+    bylineHeight = (byline:GetStringHeight() or 0) + 6
+  end
+  local height = padding + (title and title:GetStringHeight() or 0) + bylineHeight + 6
 
   local maxRowWidth = 0
 
@@ -984,6 +1006,9 @@ function WSGH.UI.Shopping.UpdateShoppingList()
   local minWidth = WSGH.Const.UI.shopping.sidebarWidth
   local targetWidth = math.max(minWidth, maxRowWidth)
   frame:SetWidth(targetWidth)
+  if byline then
+    byline:SetWidth(math.max(targetWidth - 28, 120))
+  end
   for _, entry in ipairs(entries) do
     entry:SetWidth(targetWidth - 24)
     entry.text:ClearAllPoints()

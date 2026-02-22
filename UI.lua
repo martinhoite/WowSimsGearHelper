@@ -1219,12 +1219,20 @@ function WSGH.UI.Init()
   sidebarTitle:SetPoint("TOPLEFT", 14, -14)
   sidebarTitle:SetText("Shopping List")
 
+  local shoppingByline = sidebar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  shoppingByline:SetPoint("TOPLEFT", sidebarTitle, "BOTTOMLEFT", 0, -4)
+  shoppingByline:SetJustifyH("LEFT")
+  shoppingByline:SetWordWrap(true)
+  shoppingByline:SetTextColor(1, 0.2, 0.2, 1)
+  shoppingByline:SetText("")
+  shoppingByline:Hide()
+
   local shoppingEmpty = sidebar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  shoppingEmpty:SetPoint("TOPLEFT", sidebarTitle, "BOTTOMLEFT", 0, -8)
+  shoppingEmpty:SetPoint("TOPLEFT", shoppingByline, "BOTTOMLEFT", 0, -8)
   shoppingEmpty:SetText("No missing items")
 
   local shoppingScroll = CreateFrame("ScrollFrame", "WowSimsGearHelperShoppingScroll", sidebar, "FauxScrollFrameTemplate")
-  shoppingScroll:SetPoint("TOPLEFT", sidebarTitle, "BOTTOMLEFT", 0, -8)
+  shoppingScroll:SetPoint("TOPLEFT", shoppingByline, "BOTTOMLEFT", 0, -8)
   shoppingScroll:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -24, 10)
   shoppingScroll:SetScript("OnVerticalScroll", function(self, offset)
     FauxScrollFrame_OnVerticalScroll(self, offset, entryHeight, UpdateShoppingList)
@@ -1336,6 +1344,7 @@ function WSGH.UI.Init()
   WSGH.UI.rowRightPad = rowRightPad
   WSGH.UI.shoppingFrame = sidebar
   WSGH.UI.shoppingTitle = sidebarTitle
+  WSGH.UI.shoppingByline = shoppingByline
   WSGH.UI.shoppingScroll = shoppingScroll
   WSGH.UI.shoppingEntries = shoppingEntries
   WSGH.UI.shoppingEmpty = shoppingEmpty
