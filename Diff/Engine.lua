@@ -299,8 +299,8 @@ local function BuildEnchantDisplays(planSlot, enchantTasks)
       icon = opts.icon or (info and info.icon) or (opts.isTinker and WSGH.Const.ICON_TINKER or WSGH.Const.ICON_ENCHANT),
       status = WSGH.Const.STATUS_OK,
       manualOnly = opts.manualOnly or false,
-      itemId = infoItemId or 0,
-      itemSource = infoItemSource,
+      itemId = opts.isTinker and 0 or (infoItemId or 0),
+      itemSource = opts.isTinker and nil or infoItemSource,
       isTinker = opts.isTinker or false,
       unsupported = opts.unsupported or false,
     }
@@ -308,12 +308,14 @@ local function BuildEnchantDisplays(planSlot, enchantTasks)
       if tonumber(t.wantEnchantId) == spellId and t.status ~= WSGH.Const.STATUS_OK then
         entry.status = t.status
         entry.manualOnly = t.manualOnly and true or entry.manualOnly
-        entry.itemId = tonumber(t.wantEnchantItemId) or 0
-        entry.itemSource = t.enchantItemSource
+        if t.type ~= "APPLY_TINKER" then
+          entry.itemId = tonumber(t.wantEnchantItemId) or 0
+          entry.itemSource = t.enchantItemSource
+        end
         break
       end
     end
-    if entry.itemId == 0 and WSGH.Data and WSGH.Data.Enchants and WSGH.Data.Enchants.GetItemForEnchant then
+    if not entry.isTinker and entry.itemId == 0 and WSGH.Data and WSGH.Data.Enchants and WSGH.Data.Enchants.GetItemForEnchant then
       local iid, src = WSGH.Data.Enchants.GetItemForEnchant(spellId)
       entry.itemId = iid or 0
       entry.itemSource = src
