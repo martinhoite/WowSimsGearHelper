@@ -298,7 +298,7 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
     local requiredSkill = (itemLevel > 416) and 550 or 400
     local fluxPerSocket = 4
     local fluxItemId = 3466 -- Strong Flux (vendor)
-    local text = ("Add socket via Blacksmithing (requires %d skill) and %d x Strong Flux per socket"):format(requiredSkill, fluxPerSocket)
+    local text = ("Add socket via Blacksmithing (requires %d skill)"):format(requiredSkill, fluxPerSocket)
     return {
       text = text,
       itemId = nil,
