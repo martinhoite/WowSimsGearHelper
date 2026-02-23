@@ -2,7 +2,7 @@
 ## Title: WowSims Gear Helper
 ## Notes: Paste WowSims exports and guide gear changes with highlights and shopping lists.
 ## Author: Blazz
-## Version: 0.0.4
+## Version: 0.1.0
 ## SavedVariablesPerCharacter: WowSimsGearHelperDB
 
 Libs/Json.lua
@@ -34,3 +34,4 @@ UI/Shopping.lua
 UI/Settings.lua
 UI/ImportDialog.lua
 UI.lua
+

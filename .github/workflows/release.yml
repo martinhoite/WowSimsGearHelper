@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build addon zip
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ADDON_DIR="WowSimsGearHelper"
+          VERSION="${GITHUB_REF_NAME#v}"
+          ZIP_NAME="${ADDON_DIR}-${VERSION}.zip"
+
+          mkdir -p dist "${ADDON_DIR}"
+
+          # Build package from tracked files while honoring .gitattributes export-ignore.
+          git archive --format=tar --worktree-attributes HEAD | tar -x -C "${ADDON_DIR}"
+          zip -r "dist/${ZIP_NAME}" "${ADDON_DIR}"
+
+          echo "artifact=dist/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.artifact }}
+          generate_release_notes: true
+
+      - name: Publish to CurseForge
+        if: ${{ secrets.CURSEFORGE_API_TOKEN != '' && vars.CURSEFORGE_PROJECT_ID != '' }}
+        uses: itsmeow/curseforge-upload@v3
+        with:
+          api-token: ${{ secrets.CURSEFORGE_API_TOKEN }}
+          project-id: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          game-endpoint: wow
+          file-path: ${{ steps.package.outputs.artifact }}
+          changelog: "See GitHub release notes for ${{ github.ref_name }}."
+          changelog-type: markdown
+          release-type: beta
