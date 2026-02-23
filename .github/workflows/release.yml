@@ -40,11 +40,14 @@ jobs:
           generate_release_notes: true
 
       - name: Publish to CurseForge
-        if: ${{ secrets.CURSEFORGE_API_TOKEN != '' && vars.CURSEFORGE_PROJECT_ID != '' }}
+        if: ${{ env.CURSEFORGE_API_TOKEN != '' && env.CURSEFORGE_PROJECT_ID != '' }}
         uses: itsmeow/curseforge-upload@v3
+        env:
+          CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
+          CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
         with:
-          api-token: ${{ secrets.CURSEFORGE_API_TOKEN }}
-          project-id: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          api-token: ${{ env.CURSEFORGE_API_TOKEN }}
+          project-id: ${{ env.CURSEFORGE_PROJECT_ID }}
           game-endpoint: wow
           file-path: ${{ steps.package.outputs.artifact }}
           changelog: "See GitHub release notes for ${{ github.ref_name }}."
