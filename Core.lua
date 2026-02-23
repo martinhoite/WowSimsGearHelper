@@ -3,7 +3,7 @@ local WSGH = _G.WowSimsGearHelper or {}
 _G.WowSimsGearHelper = WSGH
 
 WSGH.ADDON_NAME = ADDON_NAME
-WSGH.VERSION = "0.0.4"
+WSGH.VERSION = "0.1.0"
 
 local function EnsureDB()
   if type(_G.WowSimsGearHelperDB) ~= "table" then
@@ -188,3 +188,4 @@ events:SetScript("OnEvent", function(_, event, name)
     Print("Loaded. /wsgh to toggle.")
   end
 end)
+

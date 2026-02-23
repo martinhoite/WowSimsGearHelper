@@ -1,7 +1,6 @@
 WowSims Gear Helper
-![Version](https://img.shields.io/badge/version-0.0.4-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ===================
-
 
 <img src="WowSimsGearHelper_icon.png" alt="WowSims Gear Helper icon" width="128">
 
@@ -28,9 +27,14 @@ If your bag addon is not listed, open a feature request.
 
 Installation
 ------------
-1) Download or clone this repository.
-2) Copy `WowSimsGearHelper` into:
-   `World of Warcraft/_classic_/Interface/AddOns/`
+### For testers (recommended)
+1) Install via CurseForge client.
+2) Search for `WowSims Gear Helper` and install.
+
+### Manual zip install
+1) Download the latest release zip from GitHub Releases.
+2) Extract so the folder layout is:
+   `World of Warcraft/_classic_/Interface/AddOns/WowSimsGearHelper/`
 3) Launch the game and enable the addon.
 
 Usage
