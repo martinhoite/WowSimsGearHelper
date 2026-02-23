@@ -42,6 +42,22 @@ jobs:
           files: ${{ steps.package.outputs.artifact }}
           generate_release_notes: true
 
+      - name: Build CurseForge changelog
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          {
+            echo "body<<EOF"
+            awk -v v="$VERSION" '
+              $0 ~ "^## \\[" v "\\]" { in_section=1; print; next }
+              in_section && $0 ~ "^## \\[" { exit }
+              in_section { print }
+            ' CHANGELOG.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish to CurseForge
         if: ${{ env.CURSEFORGE_API_TOKEN != '' && env.CURSEFORGE_PROJECT_ID != '' }}
         uses: itsmeow/curseforge-upload@v3
@@ -50,6 +66,7 @@ jobs:
           project_id: ${{ env.CURSEFORGE_PROJECT_ID }}
           game_endpoint: wow
           file_path: ${{ steps.package.outputs.artifact }}
-          changelog: "See GitHub release notes for ${{ github.ref_name }}."
+          game_versions: "79434"
+          changelog: ${{ steps.changelog.outputs.body }}
           changelog_type: markdown
           release_type: beta
