@@ -66,7 +66,7 @@ jobs:
           project_id: ${{ env.CURSEFORGE_PROJECT_ID }}
           game_endpoint: wow
           file_path: ${{ steps.package.outputs.artifact }}
-          game_versions: "79434"
+          game_versions: "14102"
           changelog: ${{ steps.changelog.outputs.body }}
           changelog_type: markdown
           release_type: beta
