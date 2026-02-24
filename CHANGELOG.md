@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [0.1.0] - 2026-02-22
+## [0.1.0] - 22 Feb, 2026
 
 ### Added
 - Initial release preparation for distribution and tester onboarding.
@@ -12,7 +12,7 @@ All notable changes to this project are documented in this file.
 - Updated project version metadata to `0.1.0` for initial beta release.
 - Expanded README with distribution instructions.
 
-## [0.0.4] - 2026-02-22
+## [0.0.4] - 22 Feb, 2026
 
 ### Fixed
 - Socket guidance now resolves the active socket target more reliably by using the socket UI item title when slot/link fields are unavailable.
