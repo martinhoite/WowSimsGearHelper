@@ -52,13 +52,24 @@ local function SocketHintDescription(rowData)
 
   local desc
   if hintItemId ~= 0 then
-    local name = GetItemInfo(hintItemId) or ("item " .. hintItemId)
-    desc = ("Add missing socket: %s."):format(name)
+    local name = GetItemInfo(hintItemId)
+    if not name and C_Item and C_Item.RequestLoadItemDataByID then
+      C_Item.RequestLoadItemDataByID(hintItemId)
+    end
+    if name then
+      desc = ("Add missing socket: %s."):format(name)
+    else
+      desc = rowData.socketHintText or ("Add missing socket: item " .. hintItemId .. ".")
+    end
   else
     desc = "Add missing socket: Blacksmithing."
   end
   if extraId ~= 0 and extraCount > 0 then
-    local extraName = GetItemInfo(extraId) or ("item " .. extraId)
+    local extraName = GetItemInfo(extraId)
+    if not extraName and C_Item and C_Item.RequestLoadItemDataByID then
+      C_Item.RequestLoadItemDataByID(extraId)
+    end
+    extraName = extraName or ("item " .. extraId)
     desc = desc .. (" Requires %d x %s."):format(extraCount, extraName)
   end
   return desc

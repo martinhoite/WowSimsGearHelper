@@ -11,6 +11,7 @@ All notable changes to this project are documented in this file.
 - Extra-socket workflows now defer blocked gem socket tasks until the missing socket is added, instead of treating them as immediately actionable.
 - Socket rows now render deferred gems as blocked/not-ready with tooltip guidance to add the socket first.
 - Shopping list item resolution and need counts now include deferred gem tasks so required gems remain visible while waiting on socket creation.
+- Socket-hint subtitle fallback now avoids raw `item <id>` text when item data is uncached by requesting item data and using existing hint text until names resolve.
 
 ### Changed
 - Diff task output now emits explicit `ADD_SOCKET` tasks for rows missing planned sockets, improving task flow and diagnostics.
