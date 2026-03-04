@@ -405,9 +405,16 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   end
 
   local tasksBySocket = {}
+  local deferredBySocket = {}
   local maxTaskIndex = 0
   for _, task in ipairs(rowData.socketTasks or {}) do
     tasksBySocket[task.socketIndex] = task
+    if task.socketIndex > maxTaskIndex then
+      maxTaskIndex = task.socketIndex
+    end
+  end
+  for _, task in ipairs(rowData.deferredSocketTasks or {}) do
+    deferredBySocket[task.socketIndex] = task
     if task.socketIndex > maxTaskIndex then
       maxTaskIndex = task.socketIndex
     end
@@ -428,6 +435,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   for i = 1, WSGH.Const.MAX_SOCKETS_RENDER do
     local socketFrame = rowFrame.socketFrames[i]
     local task = tasksBySocket[i]
+    local deferredTask = deferredBySocket[i]
 
     if i <= socketCount and task then
       local gemIcon = GetGemIcon(task.wantGemId)
@@ -440,6 +448,24 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       socketFrame:Show()
       socketFrame:SetScript("OnEnter", function(self)
         ShowTooltip(self, task.wantGemId)
+      end)
+      socketFrame:SetScript("OnLeave", GameTooltip_Hide)
+    elseif i <= socketCount and deferredTask then
+      local gemIcon = GetGemIcon(deferredTask.wantGemId)
+      socketFrame.icon:SetTexture(gemIcon or WSGH.Const.ICON_EMPTY_SOCKET)
+      socketFrame.status:SetTexture(WSGH.Const.ICON_NOTREADY)
+      socketFrame:Show()
+      socketFrame:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local gemId = tonumber(deferredTask.wantGemId) or 0
+        if gemId ~= 0 then
+          local gemName = GetItemInfo(gemId) or ("gem " .. tostring(gemId))
+          GameTooltip:SetText(("Planned gem: %s"):format(gemName))
+        else
+          GameTooltip:SetText("Planned gem")
+        end
+        GameTooltip:AddLine("Socket missing on item. Add the extra socket first, then insert this gem.", 1, 0.2, 0.2, true)
+        GameTooltip:Show()
       end)
       socketFrame:SetScript("OnLeave", GameTooltip_Hide)
     elseif i <= socketCount then

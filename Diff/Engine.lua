@@ -47,8 +47,36 @@ local function GetExpectedUpgradeStep(planSlot)
   return trailingNumber
 end
 
-local function BuildSocketTasksForSlot(planSlot, equippedSlot, bagIndex)
+local function MaxExpectedSocketIndex(planSlot)
+  local maxIdx = 0
+  for socketIndex in pairs(planSlot.expectedGemsByIndex or {}) do
+    if socketIndex > maxIdx then
+      maxIdx = socketIndex
+    end
+  end
+  return maxIdx
+end
+
+local function EffectivePhysicalSocketCount(slotMeta, planSlot, equippedSlot)
+  local physicalSockets = tonumber(equippedSlot.socketCount) or 0
+  local maxExpected = MaxExpectedSocketIndex(planSlot)
+
+  -- Belt edge case: when a buckle is applied, item data can miss the extra socket.
+  if slotMeta.slotId == 6 and equippedSlot.hasBeltBuckle and maxExpected > physicalSockets then
+    physicalSockets = maxExpected
+  end
+
+  return math.max(0, physicalSockets), maxExpected
+end
+
+local function SupportsExtraSocketHints(slotId)
+  slotId = tonumber(slotId) or 0
+  return slotId == 6 or slotId == 9 or slotId == 10 or slotId == 16 or slotId == 17
+end
+
+local function BuildSocketTasksForSlot(slotMeta, planSlot, equippedSlot, bagIndex)
   local tasks = {}
+  local deferredTasks = {}
 
   local expectedItemId = tonumber(planSlot.expectedItemId) or 0
   local equippedItemId = tonumber(equippedSlot.itemId) or 0
@@ -65,40 +93,63 @@ local function BuildSocketTasksForSlot(planSlot, equippedSlot, bagIndex)
 
   local want = planSlot.expectedGemsByIndex or {}
   local have = equippedSlot.gemsByIndex or {}
+  local physicalSockets = tonumber(equippedSlot.socketCount) or 0
+  local maxExpected = MaxExpectedSocketIndex(planSlot)
+  local hasExtraSocketHintPath = SupportsExtraSocketHints(slotMeta.slotId)
+  if hasExtraSocketHintPath then
+    physicalSockets, maxExpected = EffectivePhysicalSocketCount(slotMeta, planSlot, equippedSlot)
+  end
 
   for socketIndex, wantGemId in pairs(want) do
+    socketIndex = tonumber(socketIndex) or 0
     wantGemId = tonumber(wantGemId) or 0
-    if wantGemId ~= 0 then
-      local haveGemId = tonumber(have[socketIndex]) or 0
+    if wantGemId ~= 0 and socketIndex > 0 then
+      local missingPhysicalSocket = hasExtraSocketHintPath and maxExpected > physicalSockets and socketIndex > physicalSockets
+      if not missingPhysicalSocket then
+        local haveGemId = tonumber(have[socketIndex]) or 0
 
-      local status = WSGH.Const.STATUS_OK
-      local locations = bagIndex and bagIndex[wantGemId] or nil
+        local status = WSGH.Const.STATUS_OK
+        local locations = bagIndex and bagIndex[wantGemId] or nil
 
-      if haveGemId == 0 then
-        status = WSGH.Const.STATUS_EMPTY
-      elseif haveGemId ~= wantGemId then
-        status = WSGH.Const.STATUS_WRONG
+        if haveGemId == 0 then
+          status = WSGH.Const.STATUS_EMPTY
+        elseif haveGemId ~= wantGemId then
+          status = WSGH.Const.STATUS_WRONG
+        end
+
+        if status ~= WSGH.Const.STATUS_OK and (not locations or #locations == 0) then
+          status = WSGH.Const.STATUS_MISSING
+        end
+
+        tasks[#tasks + 1] = {
+          type = "SOCKET_GEM",
+          slotId = planSlot.slotId,
+          slotKey = planSlot.slotKey,
+          itemId = equippedItemId,
+
+          socketIndex = socketIndex,
+
+          wantGemId = wantGemId,
+          haveGemId = haveGemId,
+
+          status = status,
+
+          bagLocations = locations, -- may be nil
+        }
+      else
+        deferredTasks[#deferredTasks + 1] = {
+          type = "SOCKET_GEM",
+          slotId = planSlot.slotId,
+          slotKey = planSlot.slotKey,
+          itemId = equippedItemId,
+          socketIndex = socketIndex,
+          wantGemId = wantGemId,
+          haveGemId = 0,
+          status = WSGH.Const.STATUS_WRONG,
+          blockedByMissingSocket = true,
+          bagLocations = bagIndex and bagIndex[wantGemId] or nil,
+        }
       end
-
-      if status ~= WSGH.Const.STATUS_OK and (not locations or #locations == 0) then
-        status = WSGH.Const.STATUS_MISSING
-      end
-
-      tasks[#tasks + 1] = {
-        type = "SOCKET_GEM",
-        slotId = planSlot.slotId,
-        slotKey = planSlot.slotKey,
-        itemId = equippedItemId,
-
-        socketIndex = socketIndex,
-
-        wantGemId = wantGemId,
-        haveGemId = haveGemId,
-
-        status = status,
-
-        bagLocations = locations, -- may be nil
-      }
     end
   end
 
@@ -106,8 +157,11 @@ local function BuildSocketTasksForSlot(planSlot, equippedSlot, bagIndex)
   table.sort(tasks, function(a, b)
     return a.socketIndex < b.socketIndex
   end)
+  table.sort(deferredTasks, function(a, b)
+    return a.socketIndex < b.socketIndex
+  end)
 
-  return tasks
+  return tasks, deferredTasks
 end
 
 local function BuildEnchantTasksForSlot(planSlot, equippedSlot, bagIndex)
@@ -249,16 +303,6 @@ local function ComputeSocketCount(planSlot, equippedSlot)
   return math.min(math.max(count, 0), WSGH.Const.MAX_SOCKETS_RENDER)
 end
 
-local function MaxExpectedSocketIndex(planSlot)
-  local maxIdx = 0
-  for socketIndex in pairs(planSlot.expectedGemsByIndex or {}) do
-    if socketIndex > maxIdx then
-      maxIdx = socketIndex
-    end
-  end
-  return maxIdx
-end
-
 local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocketCount)
   local expectedItemId = tonumber(planSlot.expectedItemId) or 0
   local equippedItemId = tonumber(equippedSlot.itemId) or 0
@@ -266,13 +310,7 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
     return nil
   end
 
-  local physicalSockets = tonumber(equippedSlot.socketCount) or 0
-  local maxExpected = MaxExpectedSocketIndex(planSlot)
-
-  -- Belt edge case: when a buckle is applied, item data can miss the extra socket.
-  if slotMeta.slotId == 6 and equippedSlot.hasBeltBuckle and maxExpected > physicalSockets then
-    physicalSockets = maxExpected
-  end
+  local physicalSockets, maxExpected = EffectivePhysicalSocketCount(slotMeta, planSlot, equippedSlot)
   -- Weapon sockets rely on reported stats; no extra overrides.
 
   local missingSockets = math.max(0, maxExpected - physicalSockets)
@@ -310,10 +348,7 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
 
   -- Sha-Touched / Throne of Thunder weapon socket.
   if slotId == 16 or slotId == 17 then
-    if physicalSockets == 0 then
-      return { text = "If this is a Sha-Touched/ToT weapon, use Eye of the Black Prince (93403)", itemId = 93403, missing = missingSockets }
-    end
-    return nil
+    return { text = "If this is a Sha-Touched/ToT weapon, use Eye of the Black Prince (93403)", itemId = 93403, missing = missingSockets }
   end
 
   return { text = ("Add an extra socket (plan has %d, item has %d)"):format(maxExpected, physicalSockets), itemId = nil, missing = missingSockets }
@@ -437,7 +472,7 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
     local eqSlot = equipped[slotId]
 
     if planSlot and eqSlot then
-      local socketTasks = BuildSocketTasksForSlot(planSlot, eqSlot, bagIndex)
+      local socketTasks, deferredSocketTasks = BuildSocketTasksForSlot(slotMeta, planSlot, eqSlot, bagIndex)
       local enchantTasks = BuildEnchantTasksForSlot(planSlot, eqSlot, bagIndex)
       local upgradeTasks = BuildUpgradeTasksForSlot(planSlot, eqSlot)
       local rowStatus = ComputeRowStatus(planSlot, eqSlot, socketTasks, enchantTasks, upgradeTasks)
@@ -465,6 +500,19 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
           result.tasks[#result.tasks + 1] = t
         end
       end
+      if socketHint and tonumber(socketHint.missing) and tonumber(socketHint.missing) > 0 then
+        result.tasks[#result.tasks + 1] = {
+          type = "ADD_SOCKET",
+          slotId = planSlot.slotId,
+          slotKey = planSlot.slotKey,
+          itemId = eqSlot.itemId,
+          status = WSGH.Const.STATUS_WRONG,
+          missingSockets = tonumber(socketHint.missing) or 0,
+          socketHintItemId = socketHint.itemId,
+          socketHintExtraItemId = socketHint.extraItemId,
+          socketHintExtraItemCount = socketHint.extraItemCount,
+        }
+      end
 
       result.rows[#result.rows + 1] = {
         slotId = slotId,
@@ -487,6 +535,7 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
         equippedUpgradeLevel = tonumber(eqSlot.upgradeLevel) or 0,
         equippedUpgradeMax = tonumber(eqSlot.upgradeMax) or 0,
         socketTasks = socketTasks,
+        deferredSocketTasks = deferredSocketTasks,
         nextTask = nextTask,
         socketCount = computedSocketCount,
         physicalSocketCount = tonumber(eqSlot.socketCount) or 0,
@@ -541,6 +590,14 @@ function WSGH.Debug.DumpDiffRow(slotId)
             tostring(t.wantGemId),
             tostring(t.haveGemId),
             tostring(t.status)
+          ))
+        end
+      end
+      if row.deferredSocketTasks then
+        for _, t in ipairs(row.deferredSocketTasks) do
+          WSGH.Util.Print(("[deferred %d] want=%s blocked=1"):format(
+            tonumber(t.socketIndex) or 0,
+            tostring(t.wantGemId)
           ))
         end
       end
