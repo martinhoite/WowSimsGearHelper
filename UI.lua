@@ -1144,7 +1144,8 @@ function WSGH.UI.Init()
 
   local title = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", 18, -16)
-  title:SetText("WowSims Gear Helper")
+  local addonVersion = WSGH.Util and WSGH.Util.GetAddonVersion and WSGH.Util.GetAddonVersion() or (WSGH.VERSION or "unknown")
+  title:SetText(("WowSims Gear Helper v%s"):format(tostring(addonVersion)))
 
   local close = CreateFrame("Button", nil, mainFrame, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", -5, -5)
