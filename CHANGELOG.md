@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.1] - 04 Mar, 2026
+
+### Added
+- Main window title and settings panel now display the current addon version for easier in-game verification.
+
+### Fixed
+- Extra-socket workflows now defer blocked gem socket tasks until the missing socket is added, instead of treating them as immediately actionable.
+- Socket rows now render deferred gems as blocked/not-ready with tooltip guidance to add the socket first.
+- Shopping list item resolution and need counts now include deferred gem tasks so required gems remain visible while waiting on socket creation.
+
+### Changed
+- Diff task output now emits explicit `ADD_SOCKET` tasks for rows missing planned sockets, improving task flow and diagnostics.
+
 ## [0.1.0] - 22 Feb, 2026
 
 ### Added
