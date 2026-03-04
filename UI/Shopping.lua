@@ -34,6 +34,9 @@ local function ResolveKnownNeededItemIdByName(itemName)
         addItemId(task.wantGemId)
       end
     end
+    for _, task in ipairs(row.deferredSocketTasks or {}) do
+      addItemId(task.wantGemId)
+    end
     for _, task in ipairs(row.enchantTasks or {}) do
       if task.status and task.status ~= WSGH.Const.STATUS_OK then
         addItemId(task.wantEnchantItemId)
@@ -588,6 +591,12 @@ function WSGH.UI.Shopping.UpdateShoppingList()
           end
         end
       end
+      for _, task in ipairs(row.deferredSocketTasks or {}) do
+        local wantGemId = tonumber(task.wantGemId) or 0
+        if wantGemId ~= 0 then
+          AccumulateNeed(wantGemId, 1, "Gems")
+        end
+      end
       for _, task in ipairs(row.enchantTasks or {}) do
         if task.status and task.status ~= WSGH.Const.STATUS_OK then
           local enchantItemId = tonumber(task.wantEnchantItemId) or 0
@@ -1132,6 +1141,11 @@ function WSGH.Debug.DumpShoppingItem(itemId)
     for _, row in ipairs(diff.rows) do
       for _, task in ipairs(row.socketTasks or {}) do
         if task.status and task.status ~= WSGH.Const.STATUS_OK and tonumber(task.wantGemId) == itemId then
+          needCount = needCount + 1
+        end
+      end
+      for _, task in ipairs(row.deferredSocketTasks or {}) do
+        if tonumber(task.wantGemId) == itemId then
           needCount = needCount + 1
         end
       end

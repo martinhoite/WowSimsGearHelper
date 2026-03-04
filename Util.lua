@@ -57,6 +57,21 @@ function WSGH.Util.Print(msg)
   DEFAULT_CHAT_FRAME:AddMessage(("|cff33ff99WSGH|r: %s"):format(tostring(msg)))
 end
 
+function WSGH.Util.GetAddonVersion()
+  local addonName = WSGH.ADDON_NAME
+  local version = nil
+  if type(GetAddOnMetadata) == "function" and type(addonName) == "string" and addonName ~= "" then
+    version = GetAddOnMetadata(addonName, "Version")
+  end
+  if type(version) ~= "string" or version == "" then
+    version = WSGH.VERSION
+  end
+  if type(version) ~= "string" or version == "" then
+    return "unknown"
+  end
+  return version
+end
+
 function WSGH.Util.OpenBagsForGuidance()
   local adapters = WSGH.UI and WSGH.UI.BagAdapters or nil
   if adapters and adapters.AreBagFramesVisible and adapters.AreBagFramesVisible() then

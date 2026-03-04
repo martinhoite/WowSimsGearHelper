@@ -25,10 +25,15 @@ local function BuildOptionsPanel()
   desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
   desc:SetText("Preferences")
 
+  local addonVersion = WSGH.Util and WSGH.Util.GetAddonVersion and WSGH.Util.GetAddonVersion() or (WSGH.VERSION or "unknown")
+  local versionText = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  versionText:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -4)
+  versionText:SetText(("Version: %s"):format(tostring(addonVersion)))
+
   local preferences = GetPreferences() or {}
 
   local persistCheck = CreateFrame("CheckButton", nil, optionsPanel, "ChatConfigCheckButtonTemplate")
-  persistCheck:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -8)
+  persistCheck:SetPoint("TOPLEFT", versionText, "BOTTOMLEFT", 0, -8)
   persistCheck.Text:SetText("Save last import")
   persistCheck:SetChecked(preferences.persistImports or false)
   persistCheck:SetScript("OnClick", function(self)
