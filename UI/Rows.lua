@@ -108,6 +108,38 @@ local function UpgradeProgressText(rowData)
   return ("(%d/%d)"):format(current, maxStep)
 end
 
+local function FormatCurrentGemText(gemIds)
+  if type(gemIds) ~= "table" or #gemIds == 0 then
+    return nil
+  end
+
+  local names = {}
+  for i = 1, math.min(#gemIds, 2) do
+    local gemId = tonumber(gemIds[i]) or 0
+    if gemId ~= 0 then
+      local name = GetItemInfo(gemId)
+      if not name and C_Item and C_Item.RequestLoadItemDataByID then
+        C_Item.RequestLoadItemDataByID(gemId)
+      end
+      names[#names + 1] = name or ("item " .. tostring(gemId))
+    end
+  end
+
+  if #names == 0 then
+    return "socketed gems"
+  end
+
+  local text = names[1]
+  if #names >= 2 then
+    text = text .. ", " .. names[2]
+  end
+  local remaining = #gemIds - #names
+  if remaining > 0 then
+    text = text .. (", +%d more"):format(remaining)
+  end
+  return text
+end
+
 function WSGH.UI.Rows.Create(parent)
   local rowHeight = WSGH.Const.UI.rowHeight
   local socketSize = WSGH.Const.UI.socketSize
@@ -358,8 +390,26 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   end
   rowFrame.subtitle:SetText(statusText)
 
+  local importWarnings = rowData.importWarnings or {}
+  local hasGemOmissionWarning = false
+  local hasEnchantOmissionWarning = false
+  local currentEnchantId = tonumber(rowData.currentEnchantId) or 0
+  local currentGemCount = tonumber(rowData.currentGemCount) or 0
+  local currentGemIds = type(rowData.currentGemIds) == "table" and rowData.currentGemIds or {}
+  for _, warningCode in ipairs(importWarnings) do
+    if warningCode == "MISSING_GEMS_OMITTED" then
+      hasGemOmissionWarning = true
+    elseif warningCode == "MISSING_ENCHANT_OMITTED" then
+      hasEnchantOmissionWarning = true
+    end
+  end
+
   local enchantDisplays = rowData.enchantDisplays or {}
+  local showAmbiguousEnchantPlaceholder = hasEnchantOmissionWarning and #enchantDisplays == 0 and rowData.rowStatus ~= "WRONG_ITEM"
   local showEnchantCount = math.min(#enchantDisplays, #rowFrame.enchantFrames)
+  if showAmbiguousEnchantPlaceholder then
+    showEnchantCount = math.max(showEnchantCount, 1)
+  end
   local enchantSize = 18
   local enchantGap = 4
   local enchantWidth = showEnchantCount > 0 and ((showEnchantCount * enchantSize) + (enchantGap * (showEnchantCount - 1))) or enchantSize
@@ -399,12 +449,33 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         end
 
         if data.isTinker then
-          GameTooltip:AddLine("Apply via Engineering (open the profession window to use the tinker).", 1, 0.8, 0.2, true)
+          GameTooltip:AddLine("Apply via Engineering.", 1, 0.8, 0.2, true)
         elseif data.manualOnly then
           GameTooltip:AddLine("Apply manually (no purchasable scroll).", 1, 0.8, 0.2, true)
         elseif data.itemSource == "consumable" then
           GameTooltip:AddLine("Apply using consumable.", 1, 1, 1, true)
         end
+        GameTooltip:Show()
+      end)
+      ef:SetScript("OnLeave", GameTooltip_Hide)
+    elseif showAmbiguousEnchantPlaceholder and i == 1 then
+      ef:Show()
+      ef.icon:SetTexture(WSGH.Const.ICON_ENCHANT)
+      ef.status:SetTexture(WSGH.Const.ICON_QUESTION)
+      ef.status:Show()
+      ef:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Import warning", 1, 0.82, 0.2)
+        GameTooltip:AddLine("Import has no enchant specified.", 1, 1, 1, true)
+        local enchantName = currentEnchantId ~= 0 and GetSpellInfo(currentEnchantId) or nil
+        if currentEnchantId ~= 0 then
+          if enchantName and enchantName ~= "" then
+            GameTooltip:AddLine(("Item currently has enchant: %s"):format(enchantName), 1, 1, 1, true)
+          else
+            GameTooltip:AddLine("Item currently has an enchant.", 1, 1, 1, true)
+          end
+        end
+        GameTooltip:AddLine("Please ensure this was intentional.", 1, 1, 1, true)
         GameTooltip:Show()
       end)
       ef:SetScript("OnLeave", GameTooltip_Hide)
@@ -481,9 +552,37 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       socketFrame:SetScript("OnLeave", GameTooltip_Hide)
     elseif i <= socketCount then
       socketFrame.icon:SetTexture(WSGH.Const.ICON_EMPTY_SOCKET)
-      socketFrame.status:SetTexture(nil)
-      socketFrame:SetScript("OnEnter", nil)
-      socketFrame:SetScript("OnLeave", nil)
+      if hasGemOmissionWarning then
+        socketFrame.status:SetTexture(WSGH.Const.ICON_QUESTION)
+        socketFrame:SetScript("OnEnter", function(self)
+          GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+          GameTooltip:SetText("Import warning", 1, 0.82, 0.2)
+          GameTooltip:AddLine("Import has no gem specified.", 1, 1, 1, true)
+          if currentGemCount > 0 then
+            local currentGemText = FormatCurrentGemText(currentGemIds)
+            if currentGemText then
+              if currentGemCount == 1 then
+                GameTooltip:AddLine(("Item currently has gem: %s"):format(currentGemText), 1, 1, 1, true)
+              else
+                GameTooltip:AddLine(("Item currently has gems: %s"):format(currentGemText), 1, 1, 1, true)
+              end
+            else
+              if currentGemCount == 1 then
+                GameTooltip:AddLine("Item currently has a socketed gem.", 1, 1, 1, true)
+              else
+                GameTooltip:AddLine("Item currently has socketed gems.", 1, 1, 1, true)
+              end
+            end
+          end
+          GameTooltip:AddLine("Please ensure this was intentional.", 1, 1, 1, true)
+          GameTooltip:Show()
+        end)
+        socketFrame:SetScript("OnLeave", GameTooltip_Hide)
+      else
+        socketFrame.status:SetTexture(nil)
+        socketFrame:SetScript("OnEnter", nil)
+        socketFrame:SetScript("OnLeave", nil)
+      end
       socketFrame:Show()
     else
       socketFrame:Hide()
@@ -573,7 +672,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       rowFrame.action:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         if nextIsTinker then
-          GameTooltip:SetText("Apply the expected tinker manually.")
+          GameTooltip:SetText("Apply the expected tinker.")
         else
           if nextManual then
             GameTooltip:SetText("Apply the expected enchant manually (no scroll available).")

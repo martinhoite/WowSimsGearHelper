@@ -202,12 +202,14 @@ end
 local function GetEngineeringProfession()
   local professionName = nil
   local skillLineId = nil
+  local engineeringDefinition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENGINEERING or {}
+  local engineeringSkillLineId = tonumber(engineeringDefinition.skillLineId) or 0
   if type(GetProfessions) == "function" and type(GetProfessionInfo) == "function" then
     local prof1, prof2 = GetProfessions()
     for _, prof in ipairs({ prof1, prof2 }) do
       if prof then
         local name, _, _, _, _, _, skillLine = GetProfessionInfo(prof)
-        if tonumber(skillLine) == 202 then
+        if engineeringSkillLineId ~= 0 and tonumber(skillLine) == engineeringSkillLineId then
           professionName = name
           skillLineId = tonumber(skillLine)
           break
@@ -220,6 +222,9 @@ end
 
 local function IsCurrentTradeSkillEngineering()
   local professionName = GetEngineeringProfession()
+  local engineeringDefinition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENGINEERING or {}
+  local engineeringSkillLineId = tonumber(engineeringDefinition.skillLineId) or 0
+  local engineeringNamePattern = type(engineeringDefinition.namePattern) == "string" and engineeringDefinition.namePattern:lower() or "engineer"
 
   if TradeSkillFrame and TradeSkillFrame:IsShown() and type(GetTradeSkillLine) == "function" then
     local openName = GetTradeSkillLine()
@@ -228,7 +233,7 @@ local function IsCurrentTradeSkillEngineering()
         return true
       end
       local lowered = openName:lower()
-      if lowered:find("engineer", 1, true) then
+      if lowered:find(engineeringNamePattern, 1, true) then
         return true
       end
       return false
@@ -238,9 +243,9 @@ local function IsCurrentTradeSkillEngineering()
   if ProfessionsFrame and ProfessionsFrame:IsShown() and C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillLine then
     local ok, info = pcall(C_TradeSkillUI.GetTradeSkillLine)
     if ok and type(info) == "table" then
-      if tonumber(info.skillLineID) == 202 then return true end
+      if engineeringSkillLineId ~= 0 and tonumber(info.skillLineID) == engineeringSkillLineId then return true end
       if professionName and info.professionName == professionName then return true end
-      if type(info.professionName) == "string" and info.professionName:lower():find("engineer", 1, true) then
+      if type(info.professionName) == "string" and info.professionName:lower():find(engineeringNamePattern, 1, true) then
         return true
       end
       return false
@@ -530,7 +535,7 @@ local function ExecuteEnchantAction(action)
     local requestId = Guide.tinkerSelectionRequestId
     local opened = OpenEngineeringProfession()
     if not opened then
-      WSGH.Util.Print("Unable to open Engineering. Open your profession window and apply the tinker.")
+      WSGH.Util.Print("Unable to open Engineering automatically. Open Engineering and apply the tinker manually.")
     end
     OpenCharacterFrame()
     TrySelectEngineeringRecipeWithRetry(tonumber(t.wantEnchantId) or 0, 20, false, requestId)
@@ -1180,6 +1185,24 @@ function WSGH.UI.Init()
   listLabel:SetPoint("TOPLEFT", 18, -78)
   listLabel:SetText("Equipped slots")
 
+  local listWarningChip = CreateFrame("Button", nil, mainFrame)
+  listWarningChip:SetPoint("LEFT", listLabel, "RIGHT", 10, 0)
+  listWarningChip:SetHeight(18)
+  listWarningChip:SetWidth(18)
+  listWarningChip:EnableMouse(true)
+  listWarningChip:Hide()
+
+  local listWarningIcon = listWarningChip:CreateTexture(nil, "ARTWORK")
+  listWarningIcon:SetSize(WSGH.Const.UI.warningIconSize, WSGH.Const.UI.warningIconSize)
+  listWarningIcon:SetPoint("LEFT", 0, 0)
+  listWarningIcon:SetTexture(WSGH.Const.ICON_WARNING)
+
+  local listWarningText = listWarningChip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  listWarningText:SetPoint("LEFT", listWarningIcon, "RIGHT", 4, 0)
+  listWarningText:SetJustifyH("LEFT")
+  listWarningText:SetTextColor(1, 0.2, 0.2, 1)
+  listWarningText:SetText("")
+
   local scroll = CreateFrame("ScrollFrame", "WowSimsGearHelperScroll", mainFrame, "FauxScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", 18, listTop)
   scroll:SetPoint("BOTTOMRIGHT", -rowRightPad, 18)
@@ -1358,6 +1381,8 @@ function WSGH.UI.Init()
   WSGH.UI.visibleRows = 1
   WSGH.UI.listTop = listTop
   WSGH.UI.rowRightPad = rowRightPad
+  WSGH.UI.listWarningChip = listWarningChip
+  WSGH.UI.listWarningText = listWarningText
   WSGH.UI.shoppingFrame = sidebar
   WSGH.UI.shoppingTitle = sidebarTitle
   WSGH.UI.shoppingByline = shoppingByline
@@ -1400,11 +1425,69 @@ function WSGH.UI.Render()
     if WSGH.UI.summary then
       WSGH.UI.summary:SetText(WSGH.State.plan and "Imported, no diff yet" or "No plan imported")
     end
+    if WSGH.UI.listWarningChip then
+      WSGH.UI.listWarningChip:Hide()
+      WSGH.UI.listWarningChip:SetScript("OnEnter", nil)
+      WSGH.UI.listWarningChip:SetScript("OnLeave", nil)
+      if WSGH.UI.listWarningText then
+        WSGH.UI.listWarningText:SetText("")
+      end
+    end
     UpdateShoppingList()
     return
   end
 
   WSGH.UI.summary:SetText(("Tasks: %d"):format(diff.taskCount or 0))
+  if WSGH.UI.listWarningChip then
+    local warningSlots = {}
+    local hasGemWarning = false
+    local hasEnchantWarning = false
+    for _, row in ipairs(diff.rows) do
+      if row.hasImportWarning then
+        warningSlots[#warningSlots + 1] = tostring(row.slotKey or row.slotId or "?")
+        for _, warningCode in ipairs(row.importWarnings or {}) do
+          if warningCode == "MISSING_GEMS_OMITTED" then
+            hasGemWarning = true
+          elseif warningCode == "MISSING_ENCHANT_OMITTED" then
+            hasEnchantWarning = true
+          end
+        end
+      end
+    end
+    if #warningSlots > 0 then
+      if WSGH.UI.listWarningText then
+        WSGH.UI.listWarningText:SetText(("Import warnings (%d)"):format(#warningSlots))
+        local iconWidth = tonumber(WSGH.Const.UI.warningIconSize) or 16
+        local textWidth = WSGH.UI.listWarningText:GetStringWidth() or 0
+        WSGH.UI.listWarningChip:SetWidth(iconWidth + 4 + textWidth + 2)
+      end
+      WSGH.UI.listWarningChip:Show()
+      WSGH.UI.listWarningChip:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        if hasGemWarning and hasEnchantWarning then
+          GameTooltip:SetText("Possible import issues: gems and enchant", 1, 0.82, 0.2)
+        elseif hasGemWarning then
+          GameTooltip:SetText("Possible import issues: gems", 1, 0.82, 0.2)
+        else
+          GameTooltip:SetText("Possible import issues: enchant", 1, 0.82, 0.2)
+        end
+        GameTooltip:AddLine("Affected slots: " .. table.concat(warningSlots, ", "), 1, 1, 1, true)
+        GameTooltip:AddLine(" ", 1, 1, 1, true)
+        GameTooltip:AddLine("Import data may be incomplete.", 1, 0.82, 0.2, true)
+        GameTooltip:AddLine("Please verify your import and update if it's incorrect.", 1, 0.82, 0.2, true)
+        GameTooltip:AddLine("Hover the row icons marked with ? for more information.", 1, 0.82, 0.2, true)
+        GameTooltip:Show()
+      end)
+      WSGH.UI.listWarningChip:SetScript("OnLeave", GameTooltip_Hide)
+    else
+      WSGH.UI.listWarningChip:Hide()
+      WSGH.UI.listWarningChip:SetScript("OnEnter", nil)
+      WSGH.UI.listWarningChip:SetScript("OnLeave", nil)
+      if WSGH.UI.listWarningText then
+        WSGH.UI.listWarningText:SetText("")
+      end
+    end
+  end
 
   local total = #diff.rows
   FauxScrollFrame_Update(WSGH.UI.scroll, total, WSGH.UI.visibleRows, WSGH.UI.rowHeight)

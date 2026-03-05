@@ -170,22 +170,35 @@ function WSGH.Util.GetHighlightStyle()
   return style
 end
 
--- Returns true if the player currently has Engineering learned.
-function WSGH.Util.HasEngineering()
+function WSGH.Util.HasProfession(skillLineId, namePattern)
   if type(GetProfessions) ~= "function" or type(GetProfessionInfo) ~= "function" then
     return false
   end
+  local targetSkillLineId = tonumber(skillLineId) or 0
+  local normalizedPattern = type(namePattern) == "string" and namePattern:lower() or nil
   local prof1, prof2, arch, fish, cook, firstAid = GetProfessions()
   for _, prof in ipairs({ prof1, prof2, arch, fish, cook, firstAid }) do
     if prof then
-      local name, _, _, _, _, skillLine = GetProfessionInfo(prof)
-      if tonumber(skillLine) == 202 then -- 202 = Engineering
+      local name, _, _, _, _, _, skillLine = GetProfessionInfo(prof)
+      if targetSkillLineId ~= 0 and tonumber(skillLine) == targetSkillLineId then
         return true
       end
-      if type(name) == "string" and name:lower():find("engineer") then
+      if normalizedPattern and type(name) == "string" and name:lower():find(normalizedPattern, 1, true) then
         return true
       end
     end
   end
   return false
+end
+
+-- Returns true if the player currently has Engineering learned.
+function WSGH.Util.HasEngineering()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENGINEERING or {}
+  return WSGH.Util.HasProfession(definition.skillLineId, definition.namePattern)
+end
+
+-- Returns true if the player currently has Enchanting learned.
+function WSGH.Util.HasEnchanting()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENCHANTING or {}
+  return WSGH.Util.HasProfession(definition.skillLineId, definition.namePattern)
 end

@@ -28,6 +28,17 @@ local function NormalizeGemsByIndex(gems)
   return out
 end
 
+local function GemArrayMaxIndex(gems)
+  if type(gems) ~= "table" then
+    return 0
+  end
+  local maxIndex = 0
+  for i, _ in ipairs(gems) do
+    maxIndex = i
+  end
+  return maxIndex
+end
+
 local MISSING_ENCHANT_WARNED = {}
 local function WarnMissingEnchant(effectId)
   effectId = tonumber(effectId) or 0
@@ -127,6 +138,8 @@ function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
   for i, slotMeta in ipairs(WSGH.Const.SLOT_ORDER) do
     local e = items[i] or {}
     local itemId = tonumber(e.id) or 0
+    local importHasEnchantField = e.enchant ~= nil
+    local importHasGemsField = e.gems ~= nil
 
     local expectedEnchantId, enchantUnsupported = NormalizeEnchantId(e.enchant)
     plan.slots[slotMeta.slotId] = {
@@ -136,6 +149,9 @@ function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
       expectedItemId = itemId,
 
       expectedGemsByIndex = NormalizeGemsByIndex(e.gems),
+      importHasGemsField = importHasGemsField,
+      importGemArrayMaxIndex = GemArrayMaxIndex(e.gems),
+      importHasEnchantField = importHasEnchantField,
 
       -- Stored for later features, unused in v1 UI:
       expectedEnchantId = expectedEnchantId,

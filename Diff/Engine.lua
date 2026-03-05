@@ -74,6 +74,85 @@ local function SupportsExtraSocketHints(slotId)
   return slotId == 6 or slotId == 9 or slotId == 10 or slotId == 16 or slotId == 17
 end
 
+local function CountPresentGems(gemsByIndex)
+  local count = 0
+  for _, gemId in pairs(gemsByIndex or {}) do
+    if (tonumber(gemId) or 0) ~= 0 then
+      count = count + 1
+    end
+  end
+  return count
+end
+
+local function CollectPresentGemIds(gemsByIndex)
+  local indexed = {}
+  for socketIndex, gemId in pairs(gemsByIndex or {}) do
+    socketIndex = tonumber(socketIndex) or 0
+    gemId = tonumber(gemId) or 0
+    if socketIndex > 0 and gemId ~= 0 then
+      indexed[#indexed + 1] = { socketIndex = socketIndex, gemId = gemId }
+    end
+  end
+  table.sort(indexed, function(a, b)
+    return a.socketIndex < b.socketIndex
+  end)
+
+  local ids = {}
+  for _, entry in ipairs(indexed) do
+    ids[#ids + 1] = entry.gemId
+  end
+  return ids
+end
+
+local function SlotLikelyEnchantable(slotId)
+  slotId = tonumber(slotId) or 0
+  if slotId == 11 or slotId == 12 then
+    -- Ring enchants are only self-applicable by Enchanting.
+    local hasEnchanting = WSGH.Util and WSGH.Util.HasEnchanting and WSGH.Util.HasEnchanting() or false
+    return hasEnchanting
+  end
+  local expansionKey = WSGH.Util and WSGH.Util.GetExpansionKey and WSGH.Util.GetExpansionKey() or nil
+  local byExpansion = WSGH.Const and WSGH.Const.ENCHANTABLE_SLOT_IDS_BY_EXPANSION or nil
+  local enchantableSlots = byExpansion and expansionKey and byExpansion[expansionKey] or nil
+  if not enchantableSlots then
+    enchantableSlots = WSGH.Const and WSGH.Const.ENCHANTABLE_SLOT_IDS or nil
+  end
+  return enchantableSlots and enchantableSlots[slotId] == true or false
+end
+
+local function BuildImportWarningsForSlot(planSlot, equippedSlot)
+  local warnings = {}
+  local hasGemFieldFlag = planSlot.importHasGemsField ~= nil
+  local hasEnchantFieldFlag = planSlot.importHasEnchantField ~= nil
+  if not hasGemFieldFlag and not hasEnchantFieldFlag then
+    return warnings
+  end
+
+  local expectedItemId = tonumber(planSlot.expectedItemId) or 0
+  local equippedItemId = tonumber(equippedSlot.itemId) or 0
+  if expectedItemId == 0 or equippedItemId ~= expectedItemId then
+    return warnings
+  end
+
+  local socketCount = tonumber(equippedSlot.socketCount) or 0
+  if socketCount > 0 then
+    local plannedGemCount = CountPresentGems(planSlot.expectedGemsByIndex)
+    -- Import is the source of truth; if gem data is omitted/short for a socketed
+    -- item, always flag ambiguity regardless of current gems on the item.
+    if planSlot.importHasGemsField ~= true or plannedGemCount < socketCount then
+      warnings[#warnings + 1] = "MISSING_GEMS_OMITTED"
+    end
+  end
+
+  -- Import is the source of truth; if enchant data is omitted for an enchantable
+  -- slot, always flag ambiguity regardless of current enchant on the item.
+  if planSlot.importHasEnchantField ~= true and SlotLikelyEnchantable(planSlot.slotId) then
+    warnings[#warnings + 1] = "MISSING_ENCHANT_OMITTED"
+  end
+
+  return warnings
+end
+
 local function BuildSocketTasksForSlot(slotMeta, planSlot, equippedSlot, bagIndex)
   local tasks = {}
   local deferredTasks = {}
@@ -480,6 +559,7 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
       local nextEnchantTask = NextEnchantTask(enchantTasks)
       local computedSocketCount = ComputeSocketCount(planSlot, eqSlot)
       local socketHint = SocketHintForSlot(slotMeta, planSlot, eqSlot, computedSocketCount)
+      local importWarnings = BuildImportWarningsForSlot(planSlot, eqSlot)
       local enchantDisplays = BuildEnchantDisplays(planSlot, enchantTasks)
       if rowStatus == "WRONG_ITEM" then
         enchantDisplays = {}
@@ -539,11 +619,16 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
         nextTask = nextTask,
         socketCount = computedSocketCount,
         physicalSocketCount = tonumber(eqSlot.socketCount) or 0,
+        currentGemCount = CountPresentGems(eqSlot.gemsByIndex),
+        currentGemIds = CollectPresentGemIds(eqSlot.gemsByIndex),
+        currentEnchantId = tonumber(eqSlot.enchantId) or 0,
         socketHintText = socketHint and socketHint.text or nil,
         socketHintItemId = socketHint and socketHint.itemId or nil,
         missingSockets = socketHint and socketHint.missing or 0,
         socketHintExtraItemId = socketHint and socketHint.extraItemId or nil,
         socketHintExtraItemCount = socketHint and socketHint.extraItemCount or 0,
+        importWarnings = importWarnings,
+        hasImportWarning = #importWarnings > 0,
       }
     end
   end
@@ -583,6 +668,9 @@ function WSGH.Debug.DumpDiffRow(slotId)
         tostring(row.equippedUpgradeMax),
         row.upgradeTasks and #row.upgradeTasks or 0
       ))
+      if row.importWarnings and #row.importWarnings > 0 then
+        WSGH.Util.Print("Import warnings: " .. table.concat(row.importWarnings, ", "))
+      end
       if row.socketTasks then
         for _, t in ipairs(row.socketTasks) do
           WSGH.Util.Print(("[%d] want=%s have=%s status=%s"):format(

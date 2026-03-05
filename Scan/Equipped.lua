@@ -134,7 +134,18 @@ function WSGH.Scan.Equipped.GetState()
       for _ in pairs(parsed.gemsByIndex or {}) do
         gemCount = gemCount + 1
       end
-      entry.socketCount = math.max(parsed.maxGemSlot or 0, statsSocketCount, gemCount, tooltipSocketCount)
+      -- Mixed state (some filled, some empty) needs combined counting.
+      -- EMPTY_SOCKET_* counts only empty sockets, while gemCount covers filled ones.
+      local combinedStatsAndGems = statsSocketCount + gemCount
+      local combinedTooltipAndGems = tooltipSocketCount + gemCount
+      entry.socketCount = math.max(
+        parsed.maxGemSlot or 0,
+        statsSocketCount,
+        tooltipSocketCount,
+        gemCount,
+        combinedStatsAndGems,
+        combinedTooltipAndGems
+      )
       if slotId == 6 and tooltipSocketCount > statsSocketCount then
         entry.hasBeltBuckle = true
       else
@@ -208,13 +219,20 @@ function WSGH.Debug.DumpSlot(slotId)
       emptySocketCount = emptySocketCount + v
     end
   end
-  local socketCount = math.max(parsed.maxGemSlot or 0, statsSocketCount, gemsPresent)
-  local itemLevel = tonumber(GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link)) or select(4, GetItemInfo(link)) or 0
   local tooltipInfo = WSGH.Scan.Tooltip and WSGH.Scan.Tooltip.GetInventoryItemInfo and WSGH.Scan.Tooltip.GetInventoryItemInfo("player", slotId) or nil
   local tooltipSocketCount = tooltipInfo and tonumber(tooltipInfo.socketCount) or 0
   local tooltipTinkerId = tooltipInfo and tonumber(tooltipInfo.tinkerId) or 0
   local tooltipUpgradeLevel = tooltipInfo and tonumber(tooltipInfo.upgradeLevel) or 0
   local tooltipUpgradeMax = tooltipInfo and tonumber(tooltipInfo.upgradeMax) or 0
+  local socketCount = math.max(
+    parsed.maxGemSlot or 0,
+    statsSocketCount,
+    tooltipSocketCount,
+    gemsPresent,
+    (statsSocketCount + gemsPresent),
+    (tooltipSocketCount + gemsPresent)
+  )
+  local itemLevel = tonumber(GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link)) or select(4, GetItemInfo(link)) or 0
 
   WSGH.Util.Print(("DumpSlot %d: itemId=%d enchantId=%d link=%s"):format(slotId, itemId, enchantId, link))
   WSGH.Util.Print(("Gems from link: %d, %d, %d, %d"):format(gems[1], gems[2], gems[3], gems[4]))

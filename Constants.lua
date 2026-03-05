@@ -28,6 +28,130 @@ for i, s in ipairs(WSGH.Const.SLOT_ORDER) do
   WSGH.Const.SLOT_INDEX_BY_ID[s.slotId] = i
 end
 
+-- Profession metadata used by utility helpers and profession-aware UI paths.
+WSGH.Const.PROFESSIONS = {
+  -- Primary professions
+  ALCHEMY = {
+    skillLineId = 171,
+    namePattern = "alchemy",
+  },
+  BLACKSMITHING = {
+    skillLineId = 164,
+    namePattern = "blacksmith",
+  },
+  ENGINEERING = {
+    skillLineId = 202,
+    namePattern = "engineer",
+  },
+  ENCHANTING = {
+    skillLineId = 333,
+    namePattern = "enchant",
+  },
+  HERBALISM = {
+    skillLineId = 182,
+    namePattern = "herbal",
+  },
+  INSCRIPTION = {
+    skillLineId = 773,
+    namePattern = "inscript",
+  },
+  JEWELCRAFTING = {
+    skillLineId = 755,
+    namePattern = "jewel",
+  },
+  LEATHERWORKING = {
+    skillLineId = 165,
+    namePattern = "leather",
+  },
+  MINING = {
+    skillLineId = 186,
+    namePattern = "mining",
+  },
+  SKINNING = {
+    skillLineId = 393,
+    namePattern = "skinning",
+  },
+  TAILORING = {
+    skillLineId = 197,
+    namePattern = "tailor",
+  },
+
+  -- Secondary professions
+  ARCHAEOLOGY = {
+    skillLineId = 794,
+    namePattern = "archae",
+  },
+  COOKING = {
+    skillLineId = 185,
+    namePattern = "cooking",
+  },
+  FISHING = {
+    skillLineId = 356,
+    namePattern = "fishing",
+  },
+  FIRST_AID = {
+    skillLineId = 129,
+    namePattern = "first aid",
+  },
+}
+
+-- Inventory slotIds that can receive baseline enchants by expansion key.
+WSGH.Const.ENCHANTABLE_SLOT_IDS_BY_EXPANSION = {
+  -- MoP removed head/shoulder enchants.
+  MOP = {
+    [5] = true,  -- chest
+    [7] = true,  -- legs
+    [8] = true,  -- feet
+    [9] = true,  -- wrist
+    [10] = true, -- hands
+    [15] = true, -- cloak
+    [16] = true, -- main hand
+    [17] = true, -- off hand
+  },
+  CATA = {
+    [1] = true,  -- head
+    [3] = true,  -- shoulder
+    [5] = true,  -- chest
+    [7] = true,  -- legs
+    [8] = true,  -- feet
+    [9] = true,  -- wrist
+    [10] = true, -- hands
+    [15] = true, -- cloak
+    [16] = true, -- main hand
+    [17] = true, -- off hand
+  },
+  WOTLK = {
+    [1] = true,  -- head
+    [3] = true,  -- shoulder
+    [5] = true,  -- chest
+    [7] = true,  -- legs
+    [8] = true,  -- feet
+    [9] = true,  -- wrist
+    [10] = true, -- hands
+    [15] = true, -- cloak
+    [16] = true, -- main hand
+    [17] = true, -- off hand
+  },
+  TBC = {
+    [1] = true,  -- head
+    [3] = true,  -- shoulder
+    [5] = true,  -- chest
+    [7] = true,  -- legs
+    [8] = true,  -- feet
+    [9] = true,  -- wrist
+    [10] = true, -- hands
+    [15] = true, -- cloak
+    [16] = true, -- main hand
+    [17] = true, -- off hand
+  },
+}
+
+-- Fallback map when expansion key is unavailable.
+WSGH.Const.ENCHANTABLE_SLOT_IDS = {
+  [1] = true, [3] = true, [5] = true, [7] = true, [8] = true,
+  [9] = true, [10] = true, [15] = true, [16] = true, [17] = true,
+}
+
 -- Row / socket statuses
 WSGH.Const.STATUS_OK = "OK"
 WSGH.Const.STATUS_EMPTY = "EMPTY"
@@ -42,6 +166,7 @@ WSGH.Const.ICON_PURCHASE = "Interface\\MINIMAP\\TRACKING\\Auctioneer"
 WSGH.Const.ICON_SEARCH = "Interface\\Common\\UI-Searchbox-Icon"
 WSGH.Const.ICON_ENCHANT = "Interface\\Icons\\inv_misc_enchantedscroll"
 WSGH.Const.ICON_TINKER = "Interface\\Icons\\Trade_Engineering"
+WSGH.Const.ICON_WARNING = "Interface\\DialogFrame\\UI-Dialog-Icon-AlertOther"
 
 -- Default tinker spellIds by slot (MoP defaults).
 WSGH.Const.DEFAULT_TINKERS = {
@@ -86,6 +211,9 @@ WSGH.Const.UI = {
   rowHeight = 34,
   socketSize = 16,
   socketGap = 4,
+  warningIconSize = 16,
+  warningIconGap = 6,
+  warningIconRightPad = 10,
   padding = 12,
   listTop = -96,
   rowRightPad = 24,
