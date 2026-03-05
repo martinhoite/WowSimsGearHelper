@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.2-alpha.1] - 05 Mar, 2026
+
+### Added
+- Import completeness warnings for omitted enchant/gem data, including row-level `?` indicators and a header summary chip with affected-slot context.
+- Tooltip messaging for omission warnings now includes current equipped gem/enchant context when available.
+
+### Changed
+- Missing-import warning logic now treats the import as authoritative and flags omissions even when the currently equipped item already has gems/enchants.
+- Socket-count detection now handles mixed empty/filled socket states more reliably.
+- Profession helper logic now uses shared profession metadata/constants, including an Enchanting helper for profession-aware checks.
+
+### Fixed
+- MoP enchantability handling now avoids false "missing enchant" warnings on slots that are not enchantable in that expansion.
+- Release workflow now derives `alpha`/`beta`/`release` type from tag naming and marks pre-release GitHub tags correctly.
+- CurseForge changelog generation now falls back to the latest changelog section when an exact version header is missing.
+
 ## [0.1.1] - 04 Mar, 2026
 
 ### Added
