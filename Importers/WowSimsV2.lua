@@ -28,17 +28,6 @@ local function NormalizeGemsByIndex(gems)
   return out
 end
 
-local function GemArrayMaxIndex(gems)
-  if type(gems) ~= "table" then
-    return 0
-  end
-  local maxIndex = 0
-  for i, _ in ipairs(gems) do
-    maxIndex = i
-  end
-  return maxIndex
-end
-
 local MISSING_ENCHANT_WARNED = {}
 local function WarnMissingEnchant(effectId)
   effectId = tonumber(effectId) or 0
@@ -150,7 +139,6 @@ function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
 
       expectedGemsByIndex = NormalizeGemsByIndex(e.gems),
       importHasGemsField = importHasGemsField,
-      importGemArrayMaxIndex = GemArrayMaxIndex(e.gems),
       importHasEnchantField = importHasEnchantField,
 
       -- Stored for later features, unused in v1 UI:
