@@ -15,8 +15,6 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - MoP enchantability handling now avoids false "missing enchant" warnings on slots that are not enchantable in that expansion.
-- Release workflow now derives `alpha`/`beta`/`release` type from tag naming and marks pre-release GitHub tags correctly.
-- CurseForge changelog generation now falls back to the latest changelog section when an exact version header is missing.
 
 ## [0.1.1] - 04 Mar, 2026
 
