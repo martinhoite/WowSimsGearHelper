@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.2-alpha.2] - 25 Mar, 2026
+
+### Fixed
+- Equipped socket counting no longer double-counts filled sockets on some MoP Classic items, which previously caused false import-completeness warnings on otherwise-correct rows.
+- Socket guidance now highlights the correct weapon when dual-wielding identical items, including off-hand socketing flows.
+
 ## [0.1.2-alpha.1] - 05 Mar, 2026
 
 ### Added

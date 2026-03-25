@@ -1,5 +1,6 @@
 WowSims Gear Helper
-![Version](https://img.shields.io/badge/version-0.1.2--alpha.1-blue)
+![Alpha](https://img.shields.io/badge/alpha-0.1.2--alpha.2-blue)
+![Beta](https://img.shields.io/badge/beta-0.1.1-brightgreen)
 ===================
 
 <img src="WowSimsGearHelper_icon.png" alt="WowSims Gear Helper icon" width="128">
