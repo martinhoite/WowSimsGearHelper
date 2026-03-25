@@ -134,16 +134,16 @@ function WSGH.Scan.Equipped.GetState()
       for _ in pairs(parsed.gemsByIndex or {}) do
         gemCount = gemCount + 1
       end
-      -- Mixed state (some filled, some empty) needs combined counting.
-      -- EMPTY_SOCKET_* counts only empty sockets, while gemCount covers filled ones.
-      local combinedStatsAndGems = statsSocketCount + gemCount
+      -- Tooltip socket lines only represent empty sockets, so they need to be
+      -- combined with filled gem count for mixed states. Do not do the same for
+      -- statsSocketCount: on MoP Classic, GetItemStats can still report
+      -- EMPTY_SOCKET_* for already-filled sockets, which would double-count.
       local combinedTooltipAndGems = tooltipSocketCount + gemCount
       entry.socketCount = math.max(
         parsed.maxGemSlot or 0,
         statsSocketCount,
         tooltipSocketCount,
         gemCount,
-        combinedStatsAndGems,
         combinedTooltipAndGems
       )
       if slotId == 6 and tooltipSocketCount > statsSocketCount then
@@ -229,7 +229,6 @@ function WSGH.Debug.DumpSlot(slotId)
     statsSocketCount,
     tooltipSocketCount,
     gemsPresent,
-    (statsSocketCount + gemsPresent),
     (tooltipSocketCount + gemsPresent)
   )
   local itemLevel = tonumber(GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link)) or select(4, GetItemInfo(link)) or 0
