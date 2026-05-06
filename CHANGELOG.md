@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.2-beta.1] - 07 May, 2026
+
+### Added
+- WowSims imports now support `apiVersion` 3 while keeping compatibility with `apiVersion` 2.
+- Import warnings now include upgrade ambiguity checks for upgradeable items when upgrade data is missing or imported below max.
+
+### Changed
+- WowSims import compatibility handling is now consolidated under the shared importer entry point.
+- Upgrade warning rows now show a clearer, low-priority "intentional?" message when applicable.
+
+### Fixed
+- Belt buckle detection now relies on tooltip `Prismatic Socket` data (with safe fallbacks), reducing false "buy buckle" prompts after applying a buckle.
+- Tinker guidance no longer highlights the static Tinker's Kit bag item; slot/recipe guidance remains.
+- Socket/import warning presentation around missing extra sockets was tightened for clearer row feedback.
+
 ## [0.1.2-alpha.2] - 25 Mar, 2026
 
 ### Fixed
@@ -58,3 +73,5 @@ All notable changes to this project are documented in this file.
 ### Changed
 - Shopping list search icon sizing is now controlled separately from button sizing, so the icon no longer overflows the button.
 - Added `SocketDiagnostics()` to the debug command list to simplify in-game socket-state troubleshooting.
+
+
