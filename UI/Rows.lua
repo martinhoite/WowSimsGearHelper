@@ -44,6 +44,13 @@ local function HasItemInBags(itemId)
   return locs and #locs > 0
 end
 
+local function TrackPendingItemInfo(itemId)
+  itemId = tonumber(itemId) or 0
+  if itemId == 0 then return end
+  WSGH.UI.pendingItemInfoRefreshIds = WSGH.UI.pendingItemInfoRefreshIds or {}
+  WSGH.UI.pendingItemInfoRefreshIds[itemId] = true
+end
+
 local function SocketHintDescription(rowData)
   if not rowData then return "Add missing socket." end
   local hintItemId = tonumber(rowData.socketHintItemId) or 0
@@ -54,6 +61,7 @@ local function SocketHintDescription(rowData)
   if hintItemId ~= 0 then
     local name = GetItemInfo(hintItemId)
     if not name and C_Item and C_Item.RequestLoadItemDataByID then
+      TrackPendingItemInfo(hintItemId)
       C_Item.RequestLoadItemDataByID(hintItemId)
     end
     if name then
@@ -62,11 +70,12 @@ local function SocketHintDescription(rowData)
       desc = rowData.socketHintText or ("Add missing socket: item " .. hintItemId .. ".")
     end
   else
-    desc = "Add missing socket: Blacksmithing."
+    desc = "Add socket: Blacksmithing."
   end
   if extraId ~= 0 and extraCount > 0 then
     local extraName = GetItemInfo(extraId)
     if not extraName and C_Item and C_Item.RequestLoadItemDataByID then
+      TrackPendingItemInfo(extraId)
       C_Item.RequestLoadItemDataByID(extraId)
     end
     extraName = extraName or ("item " .. extraId)
@@ -271,11 +280,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   local equippedName = GetItemNameAndIcon(equippedItemId)
 
   rowFrame.icon:SetTexture(icon or WSGH.Const.ICON_QUESTION)
-  if rowData.rowStatus == "WRONG_ITEM" and name then
-    rowFrame.title:SetText("|cffff4040" .. name .. "|r")
-  else
-    rowFrame.title:SetText(name or (displayItemId ~= 0 and ("Item " .. displayItemId) or rowData.slotKey))
-  end
+  rowFrame.title:SetText(name or (displayItemId ~= 0 and ("Item " .. displayItemId) or rowData.slotKey))
   rowFrame.icon:SetScript("OnEnter", function(self)
     if rowData.equippedLink then
       ShowTooltip(self, rowData.equippedLink)
@@ -340,6 +345,14 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   local hasPriorityUpgrade = priority and priority.hasUpgradeWork or hasUpgradeWork
   local nextPriorityEnchantTask = priority and priority.nextEnchantTask or nil
 
+  if rowData.rowStatus == "WRONG_ITEM" then
+    rowFrame.title:SetTextColor(1, 0.25, 0.25)
+  elseif hasUpgradeWork then
+    rowFrame.title:SetTextColor(1, 0.62, 0.22)
+  else
+    rowFrame.title:SetTextColor(1, 0.82, 0)
+  end
+
   local statusText = rowData.rowStatus
   if rowData.rowStatus == "WRONG_ITEM" then
     if rowData.hasExpectedInBags then
@@ -388,21 +401,52 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   if rowData.socketHintText then
     statusText = SocketHintDescription(rowData)
   end
-  rowFrame.subtitle:SetText(statusText)
 
   local importWarnings = rowData.importWarnings or {}
   local hasGemOmissionWarning = false
+  local hasExtraSocketGemOmissionWarning = false
   local hasEnchantOmissionWarning = false
+  local hasMissingUpgradeOmissionWarning = false
+  local hasUpgradeNotMaxPotentialWarning = false
   local currentEnchantId = tonumber(rowData.currentEnchantId) or 0
   local currentGemCount = tonumber(rowData.currentGemCount) or 0
   local currentGemIds = type(rowData.currentGemIds) == "table" and rowData.currentGemIds or {}
   for _, warningCode in ipairs(importWarnings) do
     if warningCode == "MISSING_GEMS_OMITTED" then
       hasGemOmissionWarning = true
+    elseif warningCode == "MISSING_EXTRA_SOCKET_GEM_OMITTED" then
+      hasGemOmissionWarning = true
+      hasExtraSocketGemOmissionWarning = true
     elseif warningCode == "MISSING_ENCHANT_OMITTED" then
       hasEnchantOmissionWarning = true
+    elseif warningCode == "MISSING_UPGRADE_OMITTED" then
+      hasMissingUpgradeOmissionWarning = true
+    elseif warningCode == "UPGRADE_STEP_NOT_MAX_POTENTIAL" or warningCode == "UPGRADE_STEP_ZERO_POTENTIAL" then
+      hasUpgradeNotMaxPotentialWarning = true
     end
   end
+
+  if hasMissingUpgradeOmissionWarning or hasUpgradeNotMaxPotentialWarning then
+    local currentUpgradeLevel = tonumber(rowData.equippedUpgradeLevel) or 0
+    local currentUpgradeMax = tonumber(rowData.equippedUpgradeMax) or 0
+    local expectedUpgradeStep = tonumber(rowData.expectedUpgradeStep) or 0
+    local shownUpgradeLevel = hasMissingUpgradeOmissionWarning and currentUpgradeLevel or expectedUpgradeStep
+    local warningSuffix = ("Import has %d/%d upgrades, intentional?"):format(
+      shownUpgradeLevel,
+      currentUpgradeMax
+    )
+
+    -- Lowest-priority warning: only show when no higher-priority action is needed.
+    if rowData.rowStatus == "OK" and not rowData.socketHintText then
+      statusText = warningSuffix
+      rowFrame.subtitle:SetTextColor(1, 0.82, 0.2)
+    else
+      rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
+    end
+  else
+    rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
+  end
+  rowFrame.subtitle:SetText(statusText)
 
   local enchantDisplays = rowData.enchantDisplays or {}
   local showAmbiguousEnchantPlaceholder = hasEnchantOmissionWarning and #enchantDisplays == 0 and rowData.rowStatus ~= "WRONG_ITEM"
@@ -503,7 +547,17 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   end
 
   if maxTaskIndex > 0 then
-    socketCount = maxTaskIndex
+    socketCount = math.max(socketCount, math.min(maxTaskIndex, WSGH.Const.MAX_SOCKETS_RENDER))
+  end
+
+  local physicalSocketCount = tonumber(rowData.physicalSocketCount) or 0
+  local likelyMissingBuckleFromImportOmission =
+    hasGemOmissionWarning and
+    tonumber(rowData.slotId) == 6 and
+    not rowData.socketHintText and
+    physicalSocketCount > 0
+  if likelyMissingBuckleFromImportOmission then
+    socketCount = math.max(socketCount, math.min(physicalSocketCount + 1, WSGH.Const.MAX_SOCKETS_RENDER))
   end
 
   local containerWidth
@@ -558,6 +612,12 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
           GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
           GameTooltip:SetText("Import warning", 1, 0.82, 0.2)
           GameTooltip:AddLine("Import has no gem specified.", 1, 1, 1, true)
+          if hasExtraSocketGemOmissionWarning and tonumber(rowData.slotId) == 6 then
+            GameTooltip:AddLine("Import also omitted a gem for the belt buckle socket.", 1, 0.82, 0.2, true)
+          end
+          if likelyMissingBuckleFromImportOmission and i > physicalSocketCount then
+            GameTooltip:AddLine("This may also require a belt buckle for an extra socket.", 1, 0.82, 0.2, true)
+          end
           if currentGemCount > 0 then
             local currentGemText = FormatCurrentGemText(currentGemIds)
             if currentGemText then
@@ -575,6 +635,15 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
             end
           end
           GameTooltip:AddLine("Please ensure this was intentional.", 1, 1, 1, true)
+          GameTooltip:Show()
+        end)
+        socketFrame:SetScript("OnLeave", GameTooltip_Hide)
+      elseif rowData.socketHintText and i > physicalSocketCount then
+        socketFrame.status:SetTexture(WSGH.Const.ICON_QUESTION)
+        socketFrame:SetScript("OnEnter", function(self)
+          GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+          GameTooltip:SetText("Socket required", 1, 0.82, 0.2)
+          GameTooltip:AddLine(SocketHintDescription(rowData), 1, 1, 1, true)
           GameTooltip:Show()
         end)
         socketFrame:SetScript("OnLeave", GameTooltip_Hide)

@@ -24,18 +24,20 @@ local function NormalizeGemsByIndex(gems)
   -- Keep socket index meaning, but drop zeros.
   -- Output is a sparse map: [1]=gemId, [2]=gemId, ...
   local out = {}
+  local maxIndex = 0
   if type(gems) ~= "table" then
-    return out
+    return out, maxIndex
   end
 
   for i, v in ipairs(gems) do
+    maxIndex = i
     local n = tonumber(v) or 0
     if n ~= 0 then
       out[i] = n
     end
   end
 
-  return out
+  return out, maxIndex
 end
 
 local MISSING_ENCHANT_WARNED = {}
@@ -172,6 +174,8 @@ function WowSimsImporter.FromDecoded(decoded)
     local itemId = tonumber(e.id) or 0
     local importHasEnchantField = e.enchant ~= nil
     local importHasGemsField = e.gems ~= nil
+    local importHasUpgradeField = e.upgradeStep ~= nil
+    local expectedGemsByIndex, expectedGemSocketCount = NormalizeGemsByIndex(e.gems)
 
     local expectedEnchantId, enchantUnsupported = NormalizeEnchantId(e.enchant)
     plan.slots[slotMeta.slotId] = {
@@ -180,9 +184,11 @@ function WowSimsImporter.FromDecoded(decoded)
 
       expectedItemId = itemId,
 
-      expectedGemsByIndex = NormalizeGemsByIndex(e.gems),
+      expectedGemsByIndex = expectedGemsByIndex,
+      expectedGemSocketCount = tonumber(expectedGemSocketCount) or 0,
       importHasGemsField = importHasGemsField,
       importHasEnchantField = importHasEnchantField,
+      importHasUpgradeField = importHasUpgradeField,
 
       -- Stored for later features, unused in v1 UI:
       expectedEnchantId = expectedEnchantId,

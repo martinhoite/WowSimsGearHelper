@@ -527,7 +527,12 @@ local function ExecuteEnchantAction(action)
   CloseSocketFrameIfOpen()
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
-    WSGH.UI.Highlight.SetEnchantTarget(tonumber(t.wantEnchantId), tonumber(t.wantEnchantItemId), tonumber(t.slotId))
+    local highlightItemId = tonumber(t.wantEnchantItemId)
+    if action.type == "APPLY_TINKER" then
+      -- Tinker guidance is recipe/slot-driven; do not highlight the static kit item in bags.
+      highlightItemId = nil
+    end
+    WSGH.UI.Highlight.SetEnchantTarget(tonumber(t.wantEnchantId), highlightItemId, tonumber(t.slotId))
   end
 
   if action.type == "APPLY_TINKER" then
@@ -1442,14 +1447,21 @@ function WSGH.UI.Render()
     local warningSlots = {}
     local hasGemWarning = false
     local hasEnchantWarning = false
+    local hasUpgradeWarning = false
     for _, row in ipairs(diff.rows) do
       if row.hasImportWarning then
         warningSlots[#warningSlots + 1] = tostring(row.slotKey or row.slotId or "?")
         for _, warningCode in ipairs(row.importWarnings or {}) do
           if warningCode == "MISSING_GEMS_OMITTED" then
             hasGemWarning = true
+          elseif warningCode == "MISSING_EXTRA_SOCKET_GEM_OMITTED" then
+            hasGemWarning = true
           elseif warningCode == "MISSING_ENCHANT_OMITTED" then
             hasEnchantWarning = true
+          elseif warningCode == "UPGRADE_STEP_ZERO_POTENTIAL"
+            or warningCode == "MISSING_UPGRADE_OMITTED"
+            or warningCode == "UPGRADE_STEP_NOT_MAX_POTENTIAL" then
+            hasUpgradeWarning = true
           end
         end
       end
@@ -1464,18 +1476,20 @@ function WSGH.UI.Render()
       WSGH.UI.listWarningChip:Show()
       WSGH.UI.listWarningChip:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if hasGemWarning and hasEnchantWarning then
-          GameTooltip:SetText("Possible import issues: gems and enchant", 1, 0.82, 0.2)
-        elseif hasGemWarning then
-          GameTooltip:SetText("Possible import issues: gems", 1, 0.82, 0.2)
-        else
-          GameTooltip:SetText("Possible import issues: enchant", 1, 0.82, 0.2)
+        local categories = {}
+        if hasGemWarning then categories[#categories + 1] = "gems" end
+        if hasEnchantWarning then categories[#categories + 1] = "enchant" end
+        if hasUpgradeWarning then categories[#categories + 1] = "upgrades" end
+        local titleText = "Possible import issues"
+        if #categories > 0 then
+          titleText = titleText .. ": " .. table.concat(categories, ", ")
         end
+        GameTooltip:SetText(titleText, 1, 0.82, 0.2)
         GameTooltip:AddLine("Affected slots: " .. table.concat(warningSlots, ", "), 1, 1, 1, true)
         GameTooltip:AddLine(" ", 1, 1, 1, true)
         GameTooltip:AddLine("Import data may be incomplete.", 1, 0.82, 0.2, true)
         GameTooltip:AddLine("Please verify your import and update if it's incorrect.", 1, 0.82, 0.2, true)
-        GameTooltip:AddLine("Hover the row icons marked with ? for more information.", 1, 0.82, 0.2, true)
+        GameTooltip:AddLine("Hover row ? icons and check warning subtitles for more information.", 1, 0.82, 0.2, true)
         GameTooltip:Show()
       end)
       WSGH.UI.listWarningChip:SetScript("OnLeave", GameTooltip_Hide)

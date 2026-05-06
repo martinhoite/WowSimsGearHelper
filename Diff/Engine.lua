@@ -48,7 +48,7 @@ local function GetExpectedUpgradeStep(planSlot)
 end
 
 local function MaxExpectedSocketIndex(planSlot)
-  local maxIdx = 0
+  local maxIdx = tonumber(planSlot.expectedGemSocketCount) or 0
   for socketIndex in pairs(planSlot.expectedGemsByIndex or {}) do
     if socketIndex > maxIdx then
       maxIdx = socketIndex
@@ -71,7 +71,10 @@ end
 
 local function SupportsExtraSocketHints(slotId)
   slotId = tonumber(slotId) or 0
-  return slotId == 6 or slotId == 9 or slotId == 10 or slotId == 16 or slotId == 17
+  if slotId == 9 or slotId == 10 then
+    return WSGH.Util and WSGH.Util.HasBlacksmithing and WSGH.Util.HasBlacksmithing() or false
+  end
+  return slotId == 6 or slotId == 16 or slotId == 17
 end
 
 local function CountPresentGems(gemsByIndex)
@@ -124,7 +127,8 @@ local function BuildImportWarningsForSlot(planSlot, equippedSlot)
   local warnings = {}
   local hasGemFieldFlag = planSlot.importHasGemsField ~= nil
   local hasEnchantFieldFlag = planSlot.importHasEnchantField ~= nil
-  if not hasGemFieldFlag and not hasEnchantFieldFlag then
+  local hasUpgradeFieldFlag = planSlot.importHasUpgradeField ~= nil
+  if not hasGemFieldFlag and not hasEnchantFieldFlag and not hasUpgradeFieldFlag then
     return warnings
   end
 
@@ -135,6 +139,7 @@ local function BuildImportWarningsForSlot(planSlot, equippedSlot)
   end
 
   local socketCount = tonumber(equippedSlot.socketCount) or 0
+  local expectedGemSocketCount = tonumber(planSlot.expectedGemSocketCount) or 0
   if socketCount > 0 then
     local plannedGemCount = CountPresentGems(planSlot.expectedGemsByIndex)
     -- Import is the source of truth; if gem data is omitted/short for a socketed
@@ -142,12 +147,33 @@ local function BuildImportWarningsForSlot(planSlot, equippedSlot)
     if planSlot.importHasGemsField ~= true or plannedGemCount < socketCount then
       warnings[#warnings + 1] = "MISSING_GEMS_OMITTED"
     end
+
+    -- Belt buckle ambiguity: import expects an extra socket but does not specify
+    -- a gem for it (e.g. gems=[gem1,gem2,0]). Warn early before buckle is applied.
+    if tonumber(planSlot.slotId) == 6 and expectedGemSocketCount > socketCount and plannedGemCount < expectedGemSocketCount then
+      warnings[#warnings + 1] = "MISSING_EXTRA_SOCKET_GEM_OMITTED"
+    end
   end
 
   -- Import is the source of truth; if enchant data is omitted for an enchantable
   -- slot, always flag ambiguity regardless of current enchant on the item.
   if planSlot.importHasEnchantField ~= true and SlotLikelyEnchantable(planSlot.slotId) then
     warnings[#warnings + 1] = "MISSING_ENCHANT_OMITTED"
+  end
+
+  -- Upgrade ambiguity: missing or partial upgrade info on upgradeable items can
+  -- be unintentional in imports and should be reviewed.
+  local expectedUpgradeStep = tonumber(planSlot.expectedUpgradeStep) or 0
+  local equippedUpgradeLevel = tonumber(equippedSlot.upgradeLevel) or 0
+  local upgradeMax = tonumber(equippedSlot.upgradeMax) or 0
+  if upgradeMax > 0 then
+    if planSlot.importHasUpgradeField ~= true then
+      if equippedUpgradeLevel < upgradeMax then
+        warnings[#warnings + 1] = "MISSING_UPGRADE_OMITTED"
+      end
+    elseif expectedUpgradeStep < upgradeMax then
+      warnings[#warnings + 1] = "UPGRADE_STEP_NOT_MAX_POTENTIAL"
+    end
   end
 
   return warnings
@@ -183,7 +209,7 @@ local function BuildSocketTasksForSlot(slotMeta, planSlot, equippedSlot, bagInde
     socketIndex = tonumber(socketIndex) or 0
     wantGemId = tonumber(wantGemId) or 0
     if wantGemId ~= 0 and socketIndex > 0 then
-      local missingPhysicalSocket = hasExtraSocketHintPath and maxExpected > physicalSockets and socketIndex > physicalSockets
+      local missingPhysicalSocket = socketIndex > physicalSockets
       if not missingPhysicalSocket then
         local haveGemId = tonumber(have[socketIndex]) or 0
 
@@ -215,7 +241,7 @@ local function BuildSocketTasksForSlot(slotMeta, planSlot, equippedSlot, bagInde
 
           bagLocations = locations, -- may be nil
         }
-      else
+      elseif hasExtraSocketHintPath and maxExpected > physicalSockets then
         deferredTasks[#deferredTasks + 1] = {
           type = "SOCKET_GEM",
           slotId = planSlot.slotId,
@@ -228,6 +254,9 @@ local function BuildSocketTasksForSlot(slotMeta, planSlot, equippedSlot, bagInde
           blockedByMissingSocket = true,
           bagLocations = bagIndex and bagIndex[wantGemId] or nil,
         }
+      else
+        -- Extra socket index on a slot that cannot currently support extra sockets
+        -- for this character (e.g., no Blacksmithing): ignore this gem task.
       end
     end
   end
@@ -363,12 +392,17 @@ local function BuildUpgradeTasksForSlot(planSlot, equippedSlot)
   return tasks
 end
 
-local function ComputeSocketCount(planSlot, equippedSlot)
+local function ComputeSocketCount(slotMeta, planSlot, equippedSlot)
   local count = tonumber(equippedSlot.socketCount) or 0
   local maxIndex = count
+  local supportsExtraSocket = SupportsExtraSocketHints(slotMeta.slotId)
+  local expectedFromImport = tonumber(planSlot.expectedGemSocketCount) or 0
+  if supportsExtraSocket and expectedFromImport > maxIndex then
+    maxIndex = expectedFromImport
+  end
 
   for socketIndex in pairs(planSlot.expectedGemsByIndex or {}) do
-    if socketIndex > maxIndex then
+    if (supportsExtraSocket or socketIndex <= count) and socketIndex > maxIndex then
       maxIndex = socketIndex
     end
   end
@@ -406,16 +440,21 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
     elseif itemLevel > 0 and itemLevel <= 416 then
       itemId = 55054 -- Ebonsteel Belt Buckle
     end
-    local name = GetItemInfo(itemId) or ("Belt buckle (" .. itemId .. ")")
+    local name = GetItemInfo(itemId) or "Belt buckle"
     return { text = "Add socket: " .. name, itemId = itemId, missing = missingSockets }
   end
 
   -- Blacksmithing extra sockets (bracer/gloves).
   if slotId == 9 or slotId == 10 then
+    local hasBlacksmithing = WSGH.Util and WSGH.Util.HasBlacksmithing and WSGH.Util.HasBlacksmithing() or false
+    if not hasBlacksmithing then
+      return nil
+    end
+
     local requiredSkill = (itemLevel > 416) and 550 or 400
     local fluxPerSocket = 4
     local fluxItemId = 3466 -- Strong Flux (vendor)
-    local text = ("Add socket via Blacksmithing (requires %d skill)"):format(requiredSkill, fluxPerSocket)
+    local text = ("Add socket: Blacksmithing (%d skill)"):format(requiredSkill)
     return {
       text = text,
       itemId = nil,
@@ -557,7 +596,7 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
       local rowStatus = ComputeRowStatus(planSlot, eqSlot, socketTasks, enchantTasks, upgradeTasks)
       local nextTask = NextSocketTask(socketTasks)
       local nextEnchantTask = NextEnchantTask(enchantTasks)
-      local computedSocketCount = ComputeSocketCount(planSlot, eqSlot)
+      local computedSocketCount = ComputeSocketCount(slotMeta, planSlot, eqSlot)
       local socketHint = SocketHintForSlot(slotMeta, planSlot, eqSlot, computedSocketCount)
       local importWarnings = BuildImportWarningsForSlot(planSlot, eqSlot)
       local enchantDisplays = BuildEnchantDisplays(planSlot, enchantTasks)
