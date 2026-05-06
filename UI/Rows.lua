@@ -44,6 +44,13 @@ local function HasItemInBags(itemId)
   return locs and #locs > 0
 end
 
+local function TrackPendingItemInfo(itemId)
+  itemId = tonumber(itemId) or 0
+  if itemId == 0 then return end
+  WSGH.UI.pendingItemInfoRefreshIds = WSGH.UI.pendingItemInfoRefreshIds or {}
+  WSGH.UI.pendingItemInfoRefreshIds[itemId] = true
+end
+
 local function SocketHintDescription(rowData)
   if not rowData then return "Add missing socket." end
   local hintItemId = tonumber(rowData.socketHintItemId) or 0
@@ -54,6 +61,7 @@ local function SocketHintDescription(rowData)
   if hintItemId ~= 0 then
     local name = GetItemInfo(hintItemId)
     if not name and C_Item and C_Item.RequestLoadItemDataByID then
+      TrackPendingItemInfo(hintItemId)
       C_Item.RequestLoadItemDataByID(hintItemId)
     end
     if name then
@@ -62,11 +70,12 @@ local function SocketHintDescription(rowData)
       desc = rowData.socketHintText or ("Add missing socket: item " .. hintItemId .. ".")
     end
   else
-    desc = "Add missing socket: Blacksmithing."
+    desc = "Add socket: Blacksmithing."
   end
   if extraId ~= 0 and extraCount > 0 then
     local extraName = GetItemInfo(extraId)
     if not extraName and C_Item and C_Item.RequestLoadItemDataByID then
+      TrackPendingItemInfo(extraId)
       C_Item.RequestLoadItemDataByID(extraId)
     end
     extraName = extraName or ("item " .. extraId)
@@ -106,6 +115,38 @@ local function UpgradeProgressText(rowData)
   if current > maxStep then current = maxStep end
 
   return ("(%d/%d)"):format(current, maxStep)
+end
+
+local function FormatCurrentGemText(gemIds)
+  if type(gemIds) ~= "table" or #gemIds == 0 then
+    return nil
+  end
+
+  local names = {}
+  for i = 1, math.min(#gemIds, 2) do
+    local gemId = tonumber(gemIds[i]) or 0
+    if gemId ~= 0 then
+      local name = GetItemInfo(gemId)
+      if not name and C_Item and C_Item.RequestLoadItemDataByID then
+        C_Item.RequestLoadItemDataByID(gemId)
+      end
+      names[#names + 1] = name or ("item " .. tostring(gemId))
+    end
+  end
+
+  if #names == 0 then
+    return "socketed gems"
+  end
+
+  local text = names[1]
+  if #names >= 2 then
+    text = text .. ", " .. names[2]
+  end
+  local remaining = #gemIds - #names
+  if remaining > 0 then
+    text = text .. (", +%d more"):format(remaining)
+  end
+  return text
 end
 
 function WSGH.UI.Rows.Create(parent)
@@ -239,11 +280,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   local equippedName = GetItemNameAndIcon(equippedItemId)
 
   rowFrame.icon:SetTexture(icon or WSGH.Const.ICON_QUESTION)
-  if rowData.rowStatus == "WRONG_ITEM" and name then
-    rowFrame.title:SetText("|cffff4040" .. name .. "|r")
-  else
-    rowFrame.title:SetText(name or (displayItemId ~= 0 and ("Item " .. displayItemId) or rowData.slotKey))
-  end
+  rowFrame.title:SetText(name or (displayItemId ~= 0 and ("Item " .. displayItemId) or rowData.slotKey))
   rowFrame.icon:SetScript("OnEnter", function(self)
     if rowData.equippedLink then
       ShowTooltip(self, rowData.equippedLink)
@@ -308,6 +345,14 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   local hasPriorityUpgrade = priority and priority.hasUpgradeWork or hasUpgradeWork
   local nextPriorityEnchantTask = priority and priority.nextEnchantTask or nil
 
+  if rowData.rowStatus == "WRONG_ITEM" then
+    rowFrame.title:SetTextColor(1, 0.25, 0.25)
+  elseif hasUpgradeWork then
+    rowFrame.title:SetTextColor(1, 0.62, 0.22)
+  else
+    rowFrame.title:SetTextColor(1, 0.82, 0)
+  end
+
   local statusText = rowData.rowStatus
   if rowData.rowStatus == "WRONG_ITEM" then
     if rowData.hasExpectedInBags then
@@ -356,10 +401,59 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   if rowData.socketHintText then
     statusText = SocketHintDescription(rowData)
   end
+
+  local importWarnings = rowData.importWarnings or {}
+  local hasGemOmissionWarning = false
+  local hasExtraSocketGemOmissionWarning = false
+  local hasEnchantOmissionWarning = false
+  local hasMissingUpgradeOmissionWarning = false
+  local hasUpgradeNotMaxPotentialWarning = false
+  local currentEnchantId = tonumber(rowData.currentEnchantId) or 0
+  local currentGemCount = tonumber(rowData.currentGemCount) or 0
+  local currentGemIds = type(rowData.currentGemIds) == "table" and rowData.currentGemIds or {}
+  for _, warningCode in ipairs(importWarnings) do
+    if warningCode == "MISSING_GEMS_OMITTED" then
+      hasGemOmissionWarning = true
+    elseif warningCode == "MISSING_EXTRA_SOCKET_GEM_OMITTED" then
+      hasGemOmissionWarning = true
+      hasExtraSocketGemOmissionWarning = true
+    elseif warningCode == "MISSING_ENCHANT_OMITTED" then
+      hasEnchantOmissionWarning = true
+    elseif warningCode == "MISSING_UPGRADE_OMITTED" then
+      hasMissingUpgradeOmissionWarning = true
+    elseif warningCode == "UPGRADE_STEP_NOT_MAX_POTENTIAL" or warningCode == "UPGRADE_STEP_ZERO_POTENTIAL" then
+      hasUpgradeNotMaxPotentialWarning = true
+    end
+  end
+
+  if hasMissingUpgradeOmissionWarning or hasUpgradeNotMaxPotentialWarning then
+    local currentUpgradeLevel = tonumber(rowData.equippedUpgradeLevel) or 0
+    local currentUpgradeMax = tonumber(rowData.equippedUpgradeMax) or 0
+    local expectedUpgradeStep = tonumber(rowData.expectedUpgradeStep) or 0
+    local shownUpgradeLevel = hasMissingUpgradeOmissionWarning and currentUpgradeLevel or expectedUpgradeStep
+    local warningSuffix = ("Import has %d/%d upgrades, intentional?"):format(
+      shownUpgradeLevel,
+      currentUpgradeMax
+    )
+
+    -- Lowest-priority warning: only show when no higher-priority action is needed.
+    if rowData.rowStatus == "OK" and not rowData.socketHintText then
+      statusText = warningSuffix
+      rowFrame.subtitle:SetTextColor(1, 0.82, 0.2)
+    else
+      rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
+    end
+  else
+    rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
+  end
   rowFrame.subtitle:SetText(statusText)
 
   local enchantDisplays = rowData.enchantDisplays or {}
+  local showAmbiguousEnchantPlaceholder = hasEnchantOmissionWarning and #enchantDisplays == 0 and rowData.rowStatus ~= "WRONG_ITEM"
   local showEnchantCount = math.min(#enchantDisplays, #rowFrame.enchantFrames)
+  if showAmbiguousEnchantPlaceholder then
+    showEnchantCount = math.max(showEnchantCount, 1)
+  end
   local enchantSize = 18
   local enchantGap = 4
   local enchantWidth = showEnchantCount > 0 and ((showEnchantCount * enchantSize) + (enchantGap * (showEnchantCount - 1))) or enchantSize
@@ -399,12 +493,33 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         end
 
         if data.isTinker then
-          GameTooltip:AddLine("Apply via Engineering (open the profession window to use the tinker).", 1, 0.8, 0.2, true)
+          GameTooltip:AddLine("Apply via Engineering.", 1, 0.8, 0.2, true)
         elseif data.manualOnly then
           GameTooltip:AddLine("Apply manually (no purchasable scroll).", 1, 0.8, 0.2, true)
         elseif data.itemSource == "consumable" then
           GameTooltip:AddLine("Apply using consumable.", 1, 1, 1, true)
         end
+        GameTooltip:Show()
+      end)
+      ef:SetScript("OnLeave", GameTooltip_Hide)
+    elseif showAmbiguousEnchantPlaceholder and i == 1 then
+      ef:Show()
+      ef.icon:SetTexture(WSGH.Const.ICON_ENCHANT)
+      ef.status:SetTexture(WSGH.Const.ICON_QUESTION)
+      ef.status:Show()
+      ef:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Import warning", 1, 0.82, 0.2)
+        GameTooltip:AddLine("Import has no enchant specified.", 1, 1, 1, true)
+        local enchantName = currentEnchantId ~= 0 and GetSpellInfo(currentEnchantId) or nil
+        if currentEnchantId ~= 0 then
+          if enchantName and enchantName ~= "" then
+            GameTooltip:AddLine(("Item currently has enchant: %s"):format(enchantName), 1, 1, 1, true)
+          else
+            GameTooltip:AddLine("Item currently has an enchant.", 1, 1, 1, true)
+          end
+        end
+        GameTooltip:AddLine("Please ensure this was intentional.", 1, 1, 1, true)
         GameTooltip:Show()
       end)
       ef:SetScript("OnLeave", GameTooltip_Hide)
@@ -432,7 +547,17 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   end
 
   if maxTaskIndex > 0 then
-    socketCount = maxTaskIndex
+    socketCount = math.max(socketCount, math.min(maxTaskIndex, WSGH.Const.MAX_SOCKETS_RENDER))
+  end
+
+  local physicalSocketCount = tonumber(rowData.physicalSocketCount) or 0
+  local likelyMissingBuckleFromImportOmission =
+    hasGemOmissionWarning and
+    tonumber(rowData.slotId) == 6 and
+    not rowData.socketHintText and
+    physicalSocketCount > 0
+  if likelyMissingBuckleFromImportOmission then
+    socketCount = math.max(socketCount, math.min(physicalSocketCount + 1, WSGH.Const.MAX_SOCKETS_RENDER))
   end
 
   local containerWidth
@@ -481,9 +606,52 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       socketFrame:SetScript("OnLeave", GameTooltip_Hide)
     elseif i <= socketCount then
       socketFrame.icon:SetTexture(WSGH.Const.ICON_EMPTY_SOCKET)
-      socketFrame.status:SetTexture(nil)
-      socketFrame:SetScript("OnEnter", nil)
-      socketFrame:SetScript("OnLeave", nil)
+      if hasGemOmissionWarning then
+        socketFrame.status:SetTexture(WSGH.Const.ICON_QUESTION)
+        socketFrame:SetScript("OnEnter", function(self)
+          GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+          GameTooltip:SetText("Import warning", 1, 0.82, 0.2)
+          GameTooltip:AddLine("Import has no gem specified.", 1, 1, 1, true)
+          if hasExtraSocketGemOmissionWarning and tonumber(rowData.slotId) == 6 then
+            GameTooltip:AddLine("Import also omitted a gem for the belt buckle socket.", 1, 0.82, 0.2, true)
+          end
+          if likelyMissingBuckleFromImportOmission and i > physicalSocketCount then
+            GameTooltip:AddLine("This may also require a belt buckle for an extra socket.", 1, 0.82, 0.2, true)
+          end
+          if currentGemCount > 0 then
+            local currentGemText = FormatCurrentGemText(currentGemIds)
+            if currentGemText then
+              if currentGemCount == 1 then
+                GameTooltip:AddLine(("Item currently has gem: %s"):format(currentGemText), 1, 1, 1, true)
+              else
+                GameTooltip:AddLine(("Item currently has gems: %s"):format(currentGemText), 1, 1, 1, true)
+              end
+            else
+              if currentGemCount == 1 then
+                GameTooltip:AddLine("Item currently has a socketed gem.", 1, 1, 1, true)
+              else
+                GameTooltip:AddLine("Item currently has socketed gems.", 1, 1, 1, true)
+              end
+            end
+          end
+          GameTooltip:AddLine("Please ensure this was intentional.", 1, 1, 1, true)
+          GameTooltip:Show()
+        end)
+        socketFrame:SetScript("OnLeave", GameTooltip_Hide)
+      elseif rowData.socketHintText and i > physicalSocketCount then
+        socketFrame.status:SetTexture(WSGH.Const.ICON_QUESTION)
+        socketFrame:SetScript("OnEnter", function(self)
+          GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+          GameTooltip:SetText("Socket required", 1, 0.82, 0.2)
+          GameTooltip:AddLine(SocketHintDescription(rowData), 1, 1, 1, true)
+          GameTooltip:Show()
+        end)
+        socketFrame:SetScript("OnLeave", GameTooltip_Hide)
+      else
+        socketFrame.status:SetTexture(nil)
+        socketFrame:SetScript("OnEnter", nil)
+        socketFrame:SetScript("OnLeave", nil)
+      end
       socketFrame:Show()
     else
       socketFrame:Hide()
@@ -573,7 +741,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       rowFrame.action:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         if nextIsTinker then
-          GameTooltip:SetText("Apply the expected tinker manually.")
+          GameTooltip:SetText("Apply the expected tinker.")
         else
           if nextManual then
             GameTooltip:SetText("Apply the expected enchant manually (no scroll available).")

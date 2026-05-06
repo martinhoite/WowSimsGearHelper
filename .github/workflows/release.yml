@@ -18,6 +18,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Determine release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          RELEASE_TYPE="release"
+          PRERELEASE="false"
+
+          if [[ "$VERSION" == *"-alpha."* ]]; then
+            RELEASE_TYPE="alpha"
+            PRERELEASE="true"
+          elif [[ "$VERSION" == *"-beta."* ]] || [[ "$VERSION" == *"-rc."* ]]; then
+            RELEASE_TYPE="beta"
+            PRERELEASE="true"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
       - name: Build addon zip
         id: package
         shell: bash
@@ -25,7 +46,7 @@ jobs:
           set -euo pipefail
 
           ADDON_DIR="WowSimsGearHelper"
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ steps.meta.outputs.version }}"
           ZIP_NAME="${ADDON_DIR}-${VERSION}.zip"
 
           mkdir -p dist "${ADDON_DIR}"
@@ -41,20 +62,34 @@ jobs:
         with:
           files: ${{ steps.package.outputs.artifact }}
           generate_release_notes: true
+          prerelease: ${{ steps.meta.outputs.prerelease }}
 
       - name: Build CurseForge changelog
         id: changelog
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          CHANGELOG_BLOCK="$(awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { in_section=1; print; next }
+            in_section && $0 ~ "^## \\[" { exit }
+            in_section { print }
+          ' CHANGELOG.md)"
+
+          if [[ -z "$CHANGELOG_BLOCK" ]]; then
+            CHANGELOG_BLOCK="$(awk '
+              $0 ~ "^## \\[" { if (seen_header == 0) { seen_header=1; in_section=1; print; next } else if (in_section) { exit } }
+              in_section { print }
+            ' CHANGELOG.md)"
+          fi
+
+          if [[ -z "$CHANGELOG_BLOCK" ]]; then
+            CHANGELOG_BLOCK="Release ${VERSION}"
+          fi
+
           {
             echo "body<<EOF"
-            awk -v v="$VERSION" '
-              $0 ~ "^## \\[" v "\\]" { in_section=1; print; next }
-              in_section && $0 ~ "^## \\[" { exit }
-              in_section { print }
-            ' CHANGELOG.md
+            echo "$CHANGELOG_BLOCK"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -69,4 +104,4 @@ jobs:
           game_versions: "14102"
           changelog: ${{ steps.changelog.outputs.body }}
           changelog_type: markdown
-          release_type: beta
+          release_type: ${{ steps.meta.outputs.release_type }}

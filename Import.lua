@@ -2,6 +2,12 @@ local WSGH = _G.WowSimsGearHelper or {}
 _G.WowSimsGearHelper = WSGH
 WSGH.Import = WSGH.Import or {}
 
+local function BuildUnsupportedApiVersionFallback(rawApiVersion)
+  return ("Unsupported WowSims apiVersion %s. Please notify the addon author and ask for an update: https://www.curseforge.com/wow/addons/wowsims-gear-helper"):format(
+    tostring(rawApiVersion)
+  )
+end
+
 function WSGH.Import.FromJson(jsonText)
   jsonText = WSGH.Util.Trim(jsonText or "")
   if jsonText == "" then
@@ -21,13 +27,17 @@ function WSGH.Import.FromJson(jsonText)
     return nil, "Parsed JSON is not an object"
   end
 
-  -- Dispatch by apiVersion (and potentially source later)
-  local apiVersion = decoded.apiVersion
-  if apiVersion == 2 then
-    return WSGH.Importers.WowSimsV2.FromDecoded(decoded)
+  -- Dispatch by apiVersion (and potentially source later).
+  local wowSimsImporter = WSGH.Importers and WSGH.Importers.WowSims
+  if wowSimsImporter and wowSimsImporter.IsSupportedApiVersion and wowSimsImporter.IsSupportedApiVersion(decoded.apiVersion) then
+    return wowSimsImporter.FromDecoded(decoded)
   end
 
-  return nil, "Unsupported apiVersion: " .. tostring(apiVersion)
+  if wowSimsImporter and wowSimsImporter.BuildUnsupportedApiVersionError then
+    return nil, wowSimsImporter.BuildUnsupportedApiVersionError(decoded.apiVersion)
+  end
+
+  return nil, BuildUnsupportedApiVersionFallback(decoded.apiVersion)
 end
 
 function WSGH.Import.__DebugTest()

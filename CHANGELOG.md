@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.2-beta.1] - 07 May, 2026
+
+### Added
+- WowSims imports now support `apiVersion` 3 while keeping compatibility with `apiVersion` 2.
+- Import warnings now include upgrade ambiguity checks for upgradeable items when upgrade data is missing or imported below max.
+
+### Changed
+- WowSims import compatibility handling is now consolidated under the shared importer entry point.
+- Upgrade warning rows now show a clearer, low-priority "intentional?" message when applicable.
+
+### Fixed
+- Belt buckle detection now relies on tooltip `Prismatic Socket` data (with safe fallbacks), reducing false "buy buckle" prompts after applying a buckle.
+- Tinker guidance no longer highlights the static Tinker's Kit bag item; slot/recipe guidance remains.
+- Socket/import warning presentation around missing extra sockets was tightened for clearer row feedback.
+
+## [0.1.2-alpha.2] - 25 Mar, 2026
+
+### Fixed
+- Equipped socket counting no longer double-counts filled sockets on some MoP Classic items, which previously caused false import-completeness warnings on otherwise-correct rows.
+- Socket guidance now highlights the correct weapon when dual-wielding identical items, including off-hand socketing flows.
+
+## [0.1.2-alpha.1] - 05 Mar, 2026
+
+### Added
+- Import completeness warnings for omitted enchant/gem data, including row-level `?` indicators and a header summary chip with affected-slot context.
+- Tooltip messaging for omission warnings now includes current equipped gem/enchant context when available.
+
+### Changed
+- Missing-import warning logic now treats the import as authoritative and flags omissions even when the currently equipped item already has gems/enchants.
+- Socket-count detection now handles mixed empty/filled socket states more reliably.
+- Profession helper logic now uses shared profession metadata/constants, including an Enchanting helper for profession-aware checks.
+
+### Fixed
+- MoP enchantability handling now avoids false "missing enchant" warnings on slots that are not enchantable in that expansion.
+
 ## [0.1.1] - 04 Mar, 2026
 
 ### Added
@@ -38,3 +73,5 @@ All notable changes to this project are documented in this file.
 ### Changed
 - Shopping list search icon sizing is now controlled separately from button sizing, so the icon no longer overflows the button.
 - Added `SocketDiagnostics()` to the debug command list to simplify in-game socket-state troubleshooting.
+
+

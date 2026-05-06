@@ -2,8 +2,8 @@ local WSGH = _G.WowSimsGearHelper
 WSGH.Scan = WSGH.Scan or {}
 WSGH.Scan.Equipped = {}
 
--- Enchant IDs that add an extra socket (even when empty).
-local BELT_BUCKLE_ENCHANTS = {
+-- Raw item-link enchant effect IDs that add an extra socket (even when empty).
+local BELT_BUCKLE_ENCHANT_EFFECT_IDS = {
   [3729] = true, -- Eternal Belt Buckle (WotLK)
   [4217] = true, -- Ebonsteel Belt Buckle (Cata)
   [4314] = true, -- Living Steel Belt Buckle (MoP)
@@ -31,7 +31,8 @@ local function ParseItemLink(link)
   local fields = { strsplit(":", itemString) }
 
   local itemId = tonumber(fields[1]) or 0
-  local enchantId = tonumber(fields[2]) or 0
+  local rawEnchantEffectId = tonumber(fields[2]) or 0
+  local enchantId = rawEnchantEffectId
 
   -- Map item-link enchant effectIds to spellIds via shared data table.
   if WSGH.Data and WSGH.Data.Enchants and WSGH.Data.Enchants.NormalizeEffectId then
@@ -64,6 +65,7 @@ local function ParseItemLink(link)
 
   return {
     itemId = itemId,
+    rawEnchantEffectId = rawEnchantEffectId,
     enchantId = enchantId,
     gemsByIndex = gemsByIndex,
     maxGemSlot = maxGemSlot,
@@ -85,6 +87,7 @@ function WSGH.Scan.Equipped.GetState()
     local tooltipTinkerId = 0
     local tooltipUpgradeLevel = 0
     local tooltipUpgradeMax = 0
+    local tooltipHasPrismaticSocket = false
 
     if link then
       local stats = GetItemStats(link) or {}
@@ -102,6 +105,7 @@ function WSGH.Scan.Equipped.GetState()
     if link then
       local parsed = ParseItemLink(link) or {
         itemId = 0,
+        rawEnchantEffectId = 0,
         enchantId = 0,
         gemsByIndex = {},
         maxGemSlot = 0,
@@ -112,6 +116,7 @@ function WSGH.Scan.Equipped.GetState()
         tooltipTinkerId = tonumber(tooltipInfo.tinkerId) or 0
         tooltipUpgradeLevel = tonumber(tooltipInfo.upgradeLevel) or 0
         tooltipUpgradeMax = tonumber(tooltipInfo.upgradeMax) or 0
+        tooltipHasPrismaticSocket = tooltipInfo.hasPrismaticSocket == true
       end
 
       local entry = {
@@ -134,11 +139,25 @@ function WSGH.Scan.Equipped.GetState()
       for _ in pairs(parsed.gemsByIndex or {}) do
         gemCount = gemCount + 1
       end
-      entry.socketCount = math.max(parsed.maxGemSlot or 0, statsSocketCount, gemCount, tooltipSocketCount)
-      if slotId == 6 and tooltipSocketCount > statsSocketCount then
+      -- Tooltip socket lines only represent empty sockets, so they need to be
+      -- combined with filled gem count for mixed states. Do not do the same for
+      -- statsSocketCount: on MoP Classic, GetItemStats can still report
+      -- EMPTY_SOCKET_* for already-filled sockets, which would double-count.
+      local combinedTooltipAndGems = tooltipSocketCount + gemCount
+      entry.socketCount = math.max(
+        parsed.maxGemSlot or 0,
+        statsSocketCount,
+        tooltipSocketCount,
+        gemCount,
+        combinedTooltipAndGems
+      )
+      if slotId == 6 and (
+        tooltipHasPrismaticSocket
+        or tooltipSocketCount > statsSocketCount
+      ) then
         entry.hasBeltBuckle = true
       else
-        entry.hasBeltBuckle = BELT_BUCKLE_ENCHANTS[parsed.enchantId] == true
+        entry.hasBeltBuckle = BELT_BUCKLE_ENCHANT_EFFECT_IDS[tonumber(parsed.rawEnchantEffectId) or 0] == true
       end
       equipped[slotId] = entry
   else
@@ -179,14 +198,15 @@ function WSGH.Debug.DumpSlot(slotId)
   local itemString = link:match("item:([%-?%d:]+)") or ""
   local fields = { strsplit(":", itemString) }
   local itemId = tonumber(fields[1]) or 0
-  local enchantId = tonumber(fields[2]) or 0
+  local rawEnchantEffectId = tonumber(fields[2]) or 0
   local gems = {}
   for i = 1, 4 do
     gems[i] = tonumber(fields[2 + i]) or 0
   end
   local parsed = ParseItemLink(link) or {
     itemId = itemId,
-    enchantId = enchantId,
+    rawEnchantEffectId = rawEnchantEffectId,
+    enchantId = rawEnchantEffectId,
     gemsByIndex = {},
     maxGemSlot = 0,
   }
@@ -208,15 +228,28 @@ function WSGH.Debug.DumpSlot(slotId)
       emptySocketCount = emptySocketCount + v
     end
   end
-  local socketCount = math.max(parsed.maxGemSlot or 0, statsSocketCount, gemsPresent)
-  local itemLevel = tonumber(GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link)) or select(4, GetItemInfo(link)) or 0
   local tooltipInfo = WSGH.Scan.Tooltip and WSGH.Scan.Tooltip.GetInventoryItemInfo and WSGH.Scan.Tooltip.GetInventoryItemInfo("player", slotId) or nil
   local tooltipSocketCount = tooltipInfo and tonumber(tooltipInfo.socketCount) or 0
   local tooltipTinkerId = tooltipInfo and tonumber(tooltipInfo.tinkerId) or 0
   local tooltipUpgradeLevel = tooltipInfo and tonumber(tooltipInfo.upgradeLevel) or 0
   local tooltipUpgradeMax = tooltipInfo and tonumber(tooltipInfo.upgradeMax) or 0
+  local tooltipHasPrismaticSocket = tooltipInfo and tooltipInfo.hasPrismaticSocket == true or false
+  local socketCount = math.max(
+    parsed.maxGemSlot or 0,
+    statsSocketCount,
+    tooltipSocketCount,
+    gemsPresent,
+    (tooltipSocketCount + gemsPresent)
+  )
+  local itemLevel = tonumber(GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link)) or select(4, GetItemInfo(link)) or 0
 
-  WSGH.Util.Print(("DumpSlot %d: itemId=%d enchantId=%d link=%s"):format(slotId, itemId, enchantId, link))
+  WSGH.Util.Print(("DumpSlot %d: itemId=%d enchantEffectId=%d normalizedEnchantId=%d link=%s"):format(
+    slotId,
+    itemId,
+    rawEnchantEffectId,
+    tonumber(parsed.enchantId) or 0,
+    link
+  ))
   WSGH.Util.Print(("Gems from link: %d, %d, %d, %d"):format(gems[1], gems[2], gems[3], gems[4]))
   WSGH.Util.Print(("Gem links: %s | %s | %s | %s"):format(gemLinks[1], gemLinks[2], gemLinks[3], gemLinks[4]))
   WSGH.Util.Print(("Gem count (parsed): %d"):format(gemsPresent))
@@ -227,6 +260,7 @@ function WSGH.Debug.DumpSlot(slotId)
     socketCount
   ))
   WSGH.Util.Print(("Tooltip sockets: %d"):format(tooltipSocketCount))
+  WSGH.Util.Print(("Tooltip hasPrismaticSocket: %s"):format(tostring(tooltipHasPrismaticSocket)))
   WSGH.Util.Print(("Tooltip tinkerId: %d"):format(tooltipTinkerId))
   WSGH.Util.Print(("Tooltip upgrade: %d/%d"):format(tooltipUpgradeLevel, tooltipUpgradeMax))
   WSGH.Util.Print(("Item level: %d"):format(itemLevel))

@@ -88,40 +88,60 @@ end
 local function FindEquippedSlotByNormalizedName(normalizedName)
   normalizedName = NormalizeSocketName(normalizedName)
   if normalizedName == "" then return nil end
+  local matchedSlotId = nil
   for _, slotMeta in ipairs(WSGH.Const.SLOT_ORDER) do
     local invLink = GetInventoryItemLink and GetInventoryItemLink("player", slotMeta.slotId) or nil
     if invLink then
       local invName = NormalizeSocketName(GetItemInfo(invLink))
       if invName ~= "" and invName == normalizedName then
-        return slotMeta.slotId
+        if matchedSlotId and matchedSlotId ~= slotMeta.slotId then
+          return nil
+        end
+        matchedSlotId = slotMeta.slotId
       end
     end
   end
-  return nil
+  return matchedSlotId
 end
 
 local function ResolveSlotIdFromSocketFrame(frame, fallbackSlotId)
   local slotId = nil
-  -- Primary path for this client: item name shown in socketing description.
+  -- Prefer an explicit socketing slot from the frame when available.
+  local socketingSlot = frame and frame.socketingSlot or nil
+  if socketingSlot and socketingSlot > 0 then
+    slotId = socketingSlot
+    return slotId
+  end
+
+  -- When socketing was opened from a row action, keep the clicked slot as the
+  -- first fallback. This avoids mis-targeting duplicate equipped items such as
+  -- dual-wielded identical weapons.
+  if fallbackSlotId and tonumber(fallbackSlotId) and tonumber(fallbackSlotId) > 0 then
+    return tonumber(fallbackSlotId)
+  end
+
+  -- Primary path for this client when no explicit slot context is available:
+  -- item name shown in socketing description.
   slotId = FindEquippedSlotByNormalizedName(GetSocketFrameItemName())
   if slotId then
     return slotId
   end
 
-  -- Legacy fallbacks for clients where slot/link fields are populated.
-  local socketingSlot = frame and frame.socketingSlot or nil
-  if socketingSlot and socketingSlot > 0 then
-    slotId = socketingSlot
-  end
+  -- Legacy fallbacks for clients where link fields are populated.
   local link = frame and frame.itemLink or nil
   local itemId = link and select(2, GetItemInfoInstant(link)) or nil
   if not slotId and itemId and itemId ~= 0 then
+    local matchedSlotId = nil
     for _, slotMeta in ipairs(WSGH.Const.SLOT_ORDER) do
       if GetInventoryItemID and GetInventoryItemID("player", slotMeta.slotId) == itemId then
-        slotId = slotMeta.slotId
-        break
+        if matchedSlotId and matchedSlotId ~= slotMeta.slotId then
+          matchedSlotId = nil
+          break
+        end
+        matchedSlotId = slotMeta.slotId
       end
     end
+    slotId = matchedSlotId
   end
   if not slotId then
     slotId = tonumber(fallbackSlotId) or nil

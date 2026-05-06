@@ -1,7 +1,17 @@
 local WSGH = _G.WowSimsGearHelper or {}
 _G.WowSimsGearHelper = WSGH
 WSGH.Importers = WSGH.Importers or {}
-WSGH.Importers.WowSimsV2 = {}
+
+local WowSimsImporter = WSGH.Importers.WowSims or {}
+WSGH.Importers.WowSims = WowSimsImporter
+WSGH.Importers.WowSimsV3 = WowSimsImporter
+
+local SUPPORTED_API_VERSIONS = {
+  [2] = true,
+  [3] = true,
+}
+
+local SUPPORTED_API_VERSION_LIST = { 2, 3 }
 
 local function IsArray(t)
   if type(t) ~= "table" then
@@ -14,18 +24,20 @@ local function NormalizeGemsByIndex(gems)
   -- Keep socket index meaning, but drop zeros.
   -- Output is a sparse map: [1]=gemId, [2]=gemId, ...
   local out = {}
+  local maxIndex = 0
   if type(gems) ~= "table" then
-    return out
+    return out, maxIndex
   end
 
   for i, v in ipairs(gems) do
+    maxIndex = i
     local n = tonumber(v) or 0
     if n ~= 0 then
       out[i] = n
     end
   end
 
-  return out
+  return out, maxIndex
 end
 
 local MISSING_ENCHANT_WARNED = {}
@@ -88,13 +100,46 @@ local function NormalizeUpgradeStep(rawUpgradeStep)
   return trailingNumber
 end
 
-function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
+local function BuildSupportedApiVersionText()
+  local count = #SUPPORTED_API_VERSION_LIST
+  if count == 0 then
+    return "none"
+  end
+  if count == 1 then
+    return tostring(SUPPORTED_API_VERSION_LIST[1])
+  end
+  if count == 2 then
+    return tostring(SUPPORTED_API_VERSION_LIST[1]) .. " and " .. tostring(SUPPORTED_API_VERSION_LIST[2])
+  end
+
+  local parts = {}
+  for i = 1, count - 1 do
+    parts[#parts + 1] = tostring(SUPPORTED_API_VERSION_LIST[i])
+  end
+  return table.concat(parts, ", ") .. ", and " .. tostring(SUPPORTED_API_VERSION_LIST[count])
+end
+
+function WowSimsImporter.IsSupportedApiVersion(rawApiVersion)
+  local apiVersion = tonumber(rawApiVersion)
+  return apiVersion ~= nil and SUPPORTED_API_VERSIONS[apiVersion] == true
+end
+
+function WowSimsImporter.BuildUnsupportedApiVersionError(rawApiVersion)
+  local supportedVersionsText = BuildSupportedApiVersionText()
+  return ("Unsupported WowSims apiVersion %s. This addon currently supports apiVersion %s. Please notify the addon author and ask for an update: https://www.curseforge.com/wow/addons/wowsims-gear-helper"):format(
+    tostring(rawApiVersion),
+    supportedVersionsText
+  )
+end
+
+function WowSimsImporter.FromDecoded(decoded)
   if type(decoded) ~= "table" then
     return nil, "Export is not an object"
   end
 
-  if decoded.apiVersion ~= 2 then
-    return nil, "Unsupported apiVersion (expected 2)"
+  local apiVersion = tonumber(decoded.apiVersion)
+  if not WowSimsImporter.IsSupportedApiVersion(apiVersion) then
+    return nil, WowSimsImporter.BuildUnsupportedApiVersionError(decoded.apiVersion)
   end
 
   local player = decoded.player
@@ -116,7 +161,7 @@ function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
   local plan = {
     meta = {
       source = "WowSims",
-      apiVersion = decoded.apiVersion,
+      apiVersion = apiVersion,
       class = player.class,
       race = player.race,
       name = player.name
@@ -127,6 +172,10 @@ function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
   for i, slotMeta in ipairs(WSGH.Const.SLOT_ORDER) do
     local e = items[i] or {}
     local itemId = tonumber(e.id) or 0
+    local importHasEnchantField = e.enchant ~= nil
+    local importHasGemsField = e.gems ~= nil
+    local importHasUpgradeField = e.upgradeStep ~= nil
+    local expectedGemsByIndex, expectedGemSocketCount = NormalizeGemsByIndex(e.gems)
 
     local expectedEnchantId, enchantUnsupported = NormalizeEnchantId(e.enchant)
     plan.slots[slotMeta.slotId] = {
@@ -135,7 +184,11 @@ function WSGH.Importers.WowSimsV2.FromDecoded(decoded)
 
       expectedItemId = itemId,
 
-      expectedGemsByIndex = NormalizeGemsByIndex(e.gems),
+      expectedGemsByIndex = expectedGemsByIndex,
+      expectedGemSocketCount = tonumber(expectedGemSocketCount) or 0,
+      importHasGemsField = importHasGemsField,
+      importHasEnchantField = importHasEnchantField,
+      importHasUpgradeField = importHasUpgradeField,
 
       -- Stored for later features, unused in v1 UI:
       expectedEnchantId = expectedEnchantId,
