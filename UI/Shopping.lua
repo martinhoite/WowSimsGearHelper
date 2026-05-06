@@ -1231,9 +1231,24 @@ local function EnsureItemDataListener()
   if C_Item and C_Item.RequestLoadItemDataByID then
     listener:RegisterEvent("ITEM_DATA_LOAD_RESULT")
   end
-  listener:SetScript("OnEvent", function(_, _, _, success)
+  listener:SetScript("OnEvent", function(_, _, itemId, success)
     if success == false then return end
     if not (WSGH.UI and WSGH.UI.frame and WSGH.UI.frame:IsShown()) then return end
+
+    local numericItemId = tonumber(itemId) or 0
+    if numericItemId == 0 and type(itemId) == "table" then
+      numericItemId = tonumber(itemId.itemID) or tonumber(itemId.itemId) or 0
+    end
+
+    local pendingItemInfo = WSGH.UI.pendingItemInfoRefreshIds
+    if numericItemId ~= 0 and pendingItemInfo and pendingItemInfo[numericItemId] then
+      pendingItemInfo[numericItemId] = nil
+      if WSGH.UI and WSGH.UI.Render then
+        WSGH.UI.Render()
+      end
+      return
+    end
+
     WSGH.UI.Shopping.UpdateShoppingList()
   end)
   WSGH.UI.Shopping.itemDataListener = listener

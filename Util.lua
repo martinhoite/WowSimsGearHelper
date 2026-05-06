@@ -197,6 +197,12 @@ function WSGH.Util.HasEngineering()
   return WSGH.Util.HasProfession(definition.skillLineId, definition.namePattern)
 end
 
+-- Returns true if the player currently has Blacksmithing learned.
+function WSGH.Util.HasBlacksmithing()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.BLACKSMITHING or {}
+  return WSGH.Util.HasProfession(definition.skillLineId, definition.namePattern)
+end
+
 -- Returns true if the player currently has Enchanting learned.
 function WSGH.Util.HasEnchanting()
   local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENCHANTING or {}

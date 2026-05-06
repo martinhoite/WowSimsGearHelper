@@ -8,6 +8,7 @@ local MAX_TOOLTIP_LINES = 30
 
 local scanner
 local socketLineSet
+local prismaticSocketLineSet
 local tinkerCache
 local ReadTooltipLines
 local lastPopulateDebug
@@ -275,6 +276,26 @@ local function EnsureTinkerCache()
   return cache
 end
 
+local function BuildPrismaticSocketLineSet()
+  if prismaticSocketLineSet then return prismaticSocketLineSet end
+  local set = {}
+  local lines = {
+    _G.EMPTY_SOCKET_PRISMATIC,
+    "Prismatic Socket",
+  }
+  for _, line in ipairs(lines) do
+    if type(line) == "string" and line ~= "" then
+      local trimmed = (WSGH.Util and WSGH.Util.Trim and WSGH.Util.Trim(line)) or line
+      local normalized = NormalizeText(trimmed)
+      if normalized ~= "" then
+        set[normalized] = true
+      end
+    end
+  end
+  prismaticSocketLineSet = set
+  return prismaticSocketLineSet
+end
+
 ReadTooltipLines = function()
   local lines = {}
   local tip = scanner
@@ -327,6 +348,17 @@ local function CountSocketsFromLines(lines)
     end
   end
   return count
+end
+
+local function HasPrismaticSocketLine(lines)
+  local set = BuildPrismaticSocketLineSet()
+  for _, line in ipairs(lines or {}) do
+    local normalized = NormalizeText(line)
+    if normalized ~= "" and set[normalized] then
+      return true
+    end
+  end
+  return false
 end
 
 local function DetectTinkerFromLines(lines)
@@ -389,6 +421,7 @@ end
 function WSGH.Scan.Tooltip.Initialize()
   EnsureScanner()
   BuildSocketLineSet()
+  BuildPrismaticSocketLineSet()
   EnsureTinkerCache()
 end
 
@@ -399,6 +432,7 @@ function WSGH.Scan.Tooltip.GetInventoryItemInfo(unit, slotId)
   return {
     socketCount = CountSocketsFromLines(lines),
     tinkerId = DetectTinkerFromLines(lines),
+    hasPrismaticSocket = HasPrismaticSocketLine(lines),
     upgradeLevel = upgradeLevel,
     upgradeMax = upgradeMax,
   }
