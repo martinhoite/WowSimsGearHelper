@@ -57,13 +57,6 @@ jobs:
 
           echo "artifact=dist/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ steps.package.outputs.artifact }}
-          generate_release_notes: true
-          prerelease: ${{ steps.meta.outputs.prerelease }}
-
       - name: Build CurseForge changelog
         id: changelog
         shell: bash
@@ -92,6 +85,14 @@ jobs:
             echo "$CHANGELOG_BLOCK"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.artifact }}
+          body: ${{ steps.changelog.outputs.body }}
+          generate_release_notes: true
+          prerelease: ${{ steps.meta.outputs.prerelease }}
 
       - name: Publish to CurseForge
         if: ${{ env.CURSEFORGE_API_TOKEN != '' && env.CURSEFORGE_PROJECT_ID != '' }}

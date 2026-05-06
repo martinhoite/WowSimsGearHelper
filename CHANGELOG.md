@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.2-beta.2] - 07 May, 2026
+
+### Changed
+- Tagged GitHub releases now include the matching changelog section in the release body, so release notes are always populated from project notes.
+
 ## [0.1.2-beta.1] - 07 May, 2026
 
 ### Added
