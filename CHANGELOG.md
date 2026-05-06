@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.2-beta.3] - 07 May, 2026
+
+### Changed
+- Release notes publishing is now split by destination: GitHub release notes stay tag-specific, while CurseForge notes include the full `0.1.*` line for better in-client context.
+
 ## [0.1.2-beta.2] - 07 May, 2026
 
 ### Changed

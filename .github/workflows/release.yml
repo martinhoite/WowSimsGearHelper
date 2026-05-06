@@ -57,32 +57,64 @@ jobs:
 
           echo "artifact=dist/${ZIP_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Build CurseForge changelog
+      - name: Build release note bodies
         id: changelog
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${{ steps.meta.outputs.version }}"
-          CHANGELOG_BLOCK="$(awk -v v="$VERSION" '
+          GITHUB_CHANGELOG_BLOCK="$(awk -v v="$VERSION" '
             $0 ~ "^## \\[" v "\\]" { in_section=1; print; next }
             in_section && $0 ~ "^## \\[" { exit }
             in_section { print }
           ' CHANGELOG.md)"
 
-          if [[ -z "$CHANGELOG_BLOCK" ]]; then
-            CHANGELOG_BLOCK="$(awk '
+          if [[ -z "$GITHUB_CHANGELOG_BLOCK" ]]; then
+            GITHUB_CHANGELOG_BLOCK="$(awk '
               $0 ~ "^## \\[" { if (seen_header == 0) { seen_header=1; in_section=1; print; next } else if (in_section) { exit } }
               in_section { print }
             ' CHANGELOG.md)"
           fi
 
-          if [[ -z "$CHANGELOG_BLOCK" ]]; then
-            CHANGELOG_BLOCK="Release ${VERSION}"
+          if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\. ]]; then
+            MINOR_KEY="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+          else
+            MINOR_KEY="$(echo "$VERSION" | cut -d. -f1-2)"
+          fi
+
+          CURSEFORGE_CHANGELOG_BLOCK="$(awk -v m="$MINOR_KEY" '
+            /^## \[/ {
+              in_section=0
+              if ($0 ~ ("^## \\[" m "\\.")) {
+                in_section=1
+                matched=1
+              }
+            }
+            in_section { print }
+            END {
+              if (!matched) {
+                exit 1
+              }
+            }
+          ' CHANGELOG.md || true)"
+
+          if [[ -z "$CURSEFORGE_CHANGELOG_BLOCK" ]]; then
+            CURSEFORGE_CHANGELOG_BLOCK="$GITHUB_CHANGELOG_BLOCK"
+          fi
+
+          if [[ -z "$GITHUB_CHANGELOG_BLOCK" ]]; then
+            GITHUB_CHANGELOG_BLOCK="Release ${VERSION}"
+          fi
+          if [[ -z "$CURSEFORGE_CHANGELOG_BLOCK" ]]; then
+            CURSEFORGE_CHANGELOG_BLOCK="Release ${VERSION}"
           fi
 
           {
-            echo "body<<EOF"
-            echo "$CHANGELOG_BLOCK"
+            echo "github_body<<EOF"
+            echo "$GITHUB_CHANGELOG_BLOCK"
+            echo "EOF"
+            echo "curseforge_body<<EOF"
+            echo "$CURSEFORGE_CHANGELOG_BLOCK"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -90,7 +122,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.package.outputs.artifact }}
-          body: ${{ steps.changelog.outputs.body }}
+          body: ${{ steps.changelog.outputs.github_body }}
           generate_release_notes: true
           prerelease: ${{ steps.meta.outputs.prerelease }}
 
@@ -103,6 +135,6 @@ jobs:
           game_endpoint: wow
           file_path: ${{ steps.package.outputs.artifact }}
           game_versions: "14102"
-          changelog: ${{ steps.changelog.outputs.body }}
+          changelog: ${{ steps.changelog.outputs.curseforge_body }}
           changelog_type: markdown
           release_type: ${{ steps.meta.outputs.release_type }}
