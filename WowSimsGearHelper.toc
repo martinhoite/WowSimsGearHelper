@@ -11,7 +11,7 @@ Constants.lua
 Data/Enchants.lua
 Util.lua
 
-Importers/WowSimsV2.lua
+Importers/WowSims.lua
 Import.lua
 
 Scan/Tooltip.lua
