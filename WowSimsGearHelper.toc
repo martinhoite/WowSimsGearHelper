@@ -36,6 +36,7 @@ UI/Highlight.lua
 UI/Minimap.lua
 UI/Shopping.lua
 UI/Settings.lua
+UI/Help.lua
 UI/ImportDialog.lua
 UI.lua
 

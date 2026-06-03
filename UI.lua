@@ -19,7 +19,15 @@ local function RestorePosition(frame)
 end
 
 local function CloseUIForCombat()
-  if not (WSGH.UI.frame and WSGH.UI.frame:IsShown()) then return end
+  if not (
+    (WSGH.UI.frame and WSGH.UI.frame:IsShown())
+    or (WSGH.UI.shoppingFrame and WSGH.UI.shoppingFrame:IsShown())
+    or (WSGH.UI.shoppingReminder and WSGH.UI.shoppingReminder:IsShown())
+    or (WSGH.UI.importDialog and WSGH.UI.importDialog:IsShown())
+    or (WSGH.UI.Help and WSGH.UI.Help.dialog and WSGH.UI.Help.dialog:IsShown())
+  ) then
+    return
+  end
   WSGH.UI.Hide()
   WSGH.Util.Print("Closed during combat; reopen with /wsgh.")
 end
@@ -39,9 +47,12 @@ local function ResetRuntimeState()
   EnsureUIState()
   WSGH.State.plan = nil
   WSGH.State.diff = nil
+  WSGH.State.lastImportSource = nil
   Guide.currentAction = nil
   Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   WSGH.UI.pendingPurchases = {}
+  WSGH.UI.pendingPurchasesByName = {}
+  WSGH.UI.reforgeReminder = nil
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
     WSGH.UI.Highlight.SetTarget(nil, nil)
@@ -70,6 +81,142 @@ local function ResetRuntimeState()
   end
 end
 WSGH.UI.ResetRuntimeState = ResetRuntimeState
+
+local function PlanHasReforges(plan)
+  if type(plan) ~= "table" then return false end
+  if type(plan.meta) == "table" and plan.meta.hasReforges ~= nil then
+    return plan.meta.hasReforges == true
+  end
+  for _, slotPlan in pairs(plan.slots or {}) do
+    if (tonumber(slotPlan.expectedReforgeId) or 0) ~= 0 then
+      return true
+    end
+  end
+  return false
+end
+
+local function RefreshReforgeReminder()
+  if WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateReforgeReminder then
+    WSGH.UI.Shopping.UpdateReforgeReminder()
+  end
+end
+
+function WSGH.UI.RefreshWindowBackgrounds()
+  if not (WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground) then return end
+
+  WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.frame, "main")
+  WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.shoppingFrame, "shopping")
+  WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.shoppingReminder, "shoppingReminder", 3)
+
+  if WSGH.UI.Help and WSGH.UI.Help.dialog then
+    WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.Help.dialog, "help")
+  end
+
+  if WSGH.UI.importDialog then
+    WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.importDialog, "import")
+  end
+end
+
+local HasEquippedSnapshotChanged
+local HasUpgradeSnapshotChanged
+local BuildDiffAndRender
+
+local function RuntimePollUpdate(self, elapsed)
+  self.pollElapsed = (tonumber(self.pollElapsed) or 0) + (tonumber(elapsed) or 0)
+  if self.pollElapsed < 1.0 then return end
+  self.pollElapsed = 0
+
+  if not (WSGH.UI.frame and WSGH.UI.frame:IsShown()) then return end
+  if not WSGH.State or not WSGH.State.plan then return end
+
+  -- Some item changes (notably upgrades) may not fire equipment/bag events on all clients.
+  -- Poll for equipped-link and tooltip-upgrade changes while UI is open.
+  if HasEquippedSnapshotChanged() or HasUpgradeSnapshotChanged() then
+    BuildDiffAndRender()
+    if Guide.OnStateUpdated then Guide.OnStateUpdated() end
+  end
+end
+
+local function SetRuntimePollingEnabled(enabled)
+  if not WSGH.UI.eventFrame then return end
+  if enabled then
+    WSGH.UI.eventFrame.pollElapsed = 0
+    WSGH.UI.eventFrame:SetScript("OnUpdate", RuntimePollUpdate)
+  else
+    WSGH.UI.eventFrame.pollElapsed = 0
+    WSGH.UI.eventFrame:SetScript("OnUpdate", nil)
+  end
+end
+
+local function SetAuxiliaryFramesShown(shown)
+  if WSGH.UI.shoppingFrame then
+    if shown then WSGH.UI.shoppingFrame:Show() else WSGH.UI.shoppingFrame:Hide() end
+  end
+  if WSGH.UI.shoppingReminder then
+    if shown then
+      if WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateReforgeReminder then
+        WSGH.UI.Shopping.UpdateReforgeReminder()
+      end
+    else
+      WSGH.UI.shoppingReminder:Hide()
+    end
+  end
+  if not shown then
+    if WSGH.UI.importDialog then WSGH.UI.importDialog:Hide() end
+    if WSGH.UI.Help and WSGH.UI.Help.dialog then WSGH.UI.Help.dialog:Hide() end
+  end
+end
+
+local function ConfigureReforgeReminderForPlan(plan, source)
+  local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
+  local hasReforges = PlanHasReforges(plan)
+  local shouldShow = false
+
+  if hasReforges and preferences then
+    if source == "manual" then
+      shouldShow = preferences.showReforgeReminderAfterImport ~= false
+    elseif source == "restore" then
+      shouldShow = preferences.persistImports == true and preferences.showReforgeReminderOnRestore == true
+    end
+  end
+
+  WSGH.UI.reforgeReminder = {
+    hasReforges = hasReforges,
+    source = source,
+    hidden = not shouldShow,
+  }
+  RefreshReforgeReminder()
+end
+
+function WSGH.UI.DismissReforgeReminder()
+  if not WSGH.UI.reforgeReminder then return end
+  WSGH.UI.reforgeReminder.hidden = true
+  RefreshReforgeReminder()
+end
+
+local function ApplyImportedPlan(plan, source)
+  if WSGH.UI.ResetRuntimeState then
+    WSGH.UI.ResetRuntimeState()
+  end
+
+  WSGH.State = WSGH.State or {}
+  WSGH.State.plan = plan
+  WSGH.State.lastImportSource = source
+
+  local equipped = WSGH.Scan.Equipped.GetState()
+  local diff, err = WSGH.Diff.Build(plan, equipped)
+  if not diff then
+    return nil, err
+  end
+
+  WSGH.State.diff = diff
+  ConfigureReforgeReminderForPlan(plan, source)
+  if WSGH.UI.frame and WSGH.UI.rows then
+    WSGH.UI.Render()
+  end
+  return true
+end
+WSGH.UI.ApplyImportedPlan = ApplyImportedPlan
 
 local function FindNextPendingSocketTask(rowData)
   if not rowData then return nil end
@@ -799,7 +946,7 @@ local function UpdateShoppingList()
   WSGH.UI.Shopping.UpdateShoppingList()
 end
 
-local function HasEquippedSnapshotChanged()
+HasEquippedSnapshotChanged = function()
   local diff = WSGH.State and WSGH.State.diff
   if not (diff and diff.rows) then return false end
 
@@ -817,7 +964,7 @@ local function HasEquippedSnapshotChanged()
   return false
 end
 
-local function HasUpgradeSnapshotChanged()
+HasUpgradeSnapshotChanged = function()
   local diff = WSGH.State and WSGH.State.diff
   if not (diff and diff.rows) then return false end
   if not (WSGH.Scan and WSGH.Scan.Tooltip and WSGH.Scan.Tooltip.GetInventoryItemInfo) then
@@ -868,7 +1015,7 @@ local function SearchAuctionHouseById(itemId)
 end
 WSGH.UI.IsAuctionHouseOpen = IsAuctionHouseOpen
 
-local function BuildDiffAndRender()
+BuildDiffAndRender = function()
   EnsureUIState()
 
   if not WSGH.State.plan then
@@ -944,15 +1091,8 @@ function TryLoadSavedImport()
     return
   end
 
-  if WSGH.UI.ResetRuntimeState then
-    WSGH.UI.ResetRuntimeState()
-  end
-
-  WSGH.State.plan = plan
-  local diff, derr = WSGH.Diff.Build(plan)
-  if diff then
-    WSGH.State.diff = diff
-  else
+  local ok, derr = WSGH.UI.ApplyImportedPlan(plan, "restore")
+  if not ok then
     WSGH.Util.Print("Saved import diff failed: " .. tostring(derr))
   end
 end
@@ -1207,6 +1347,9 @@ function WSGH.UI.Init()
     edgeSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
   })
+  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
+    WSGH.Util.ApplyOpaqueWindowBackground(mainFrame, "main")
+  end
 
   RestorePosition(mainFrame)
 
@@ -1218,6 +1361,19 @@ function WSGH.UI.Init()
   local versionLabel = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   versionLabel:SetPoint("LEFT", title, "RIGHT", 8, -1)
   versionLabel:SetText(("v%s"):format(tostring(addonVersion)))
+
+  local helpBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
+  helpBtn:SetSize(WSGH.Const.UI.help.iconButton.width, WSGH.Const.UI.help.iconButton.height)
+  helpBtn:SetPoint("LEFT", versionLabel, "RIGHT", 8, 0)
+  helpBtn:SetText("?")
+  helpBtn:SetScript("OnClick", function()
+    if WSGH.UI.Help and WSGH.UI.Help.Show then
+      WSGH.UI.Help.Show("quick")
+    end
+  end)
+  if WSGH.UI.Help and WSGH.UI.Help.SetHelpTooltip then
+    WSGH.UI.Help.SetHelpTooltip(helpBtn)
+  end
 
   local close = CreateFrame("Button", nil, mainFrame, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", -5, -5)
@@ -1316,6 +1472,9 @@ function WSGH.UI.Init()
     edgeSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
   })
+  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
+    WSGH.Util.ApplyOpaqueWindowBackground(sidebar, "shopping")
+  end
 
   local sidebarTitle = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   sidebarTitle:SetPoint("TOPLEFT", 14, -14)
@@ -1333,15 +1492,74 @@ function WSGH.UI.Init()
   shoppingEmpty:SetPoint("TOPLEFT", shoppingByline, "BOTTOMLEFT", 0, -8)
   shoppingEmpty:SetText("No missing items")
 
+  local shoppingReminder = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
+  shoppingReminder:SetPoint("TOPLEFT", sidebar, "BOTTOMLEFT", 10, -4)
+  shoppingReminder:SetPoint("TOPRIGHT", sidebar, "BOTTOMRIGHT", -10, -4)
+  shoppingReminder:SetHeight(WSGH.Const.UI.shopping.reminder.height)
+  shoppingReminder:SetFrameStrata("DIALOG")
+  shoppingReminder:SetToplevel(true)
+  shoppingReminder:SetBackdrop({
+    bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true,
+    tileSize = 16,
+    edgeSize = 12,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+  })
+  shoppingReminder:SetBackdropColor(0, 0, 0, 0.75)
+  shoppingReminder:SetBackdropBorderColor(0.45, 0.45, 0.45, 1)
+  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
+    WSGH.Util.ApplyOpaqueWindowBackground(shoppingReminder, "shoppingReminder", 3)
+  end
+  shoppingReminder:Hide()
+
+  local shoppingReminderLabel = shoppingReminder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  shoppingReminderLabel:SetPoint("LEFT", WSGH.Const.UI.shopping.reminder.padding, 0)
+  shoppingReminderLabel:SetText("Did you reforge?")
+  shoppingReminderLabel:SetTextColor(1, 0.82, 0, 1)
+
+  local shoppingReminderDone = CreateFrame("Button", nil, shoppingReminder, "UIPanelButtonTemplate")
+  shoppingReminderDone:SetSize(
+    WSGH.Const.UI.shopping.reminder.actionButton.width,
+    WSGH.Const.UI.shopping.reminder.actionButton.height
+  )
+  shoppingReminderDone:SetPoint("LEFT", shoppingReminderLabel, "RIGHT", 12, 0)
+  shoppingReminderDone:SetText("Done")
+  shoppingReminderDone:SetScript("OnClick", function()
+    WSGH.UI.DismissReforgeReminder()
+  end)
+
+  local shoppingReminderClose = CreateFrame("Button", nil, shoppingReminder, "UIPanelButtonTemplate")
+  shoppingReminderClose:SetSize(
+    WSGH.Const.UI.shopping.reminder.closeButton.width,
+    WSGH.Const.UI.shopping.reminder.closeButton.height
+  )
+  shoppingReminderClose:SetPoint("RIGHT", shoppingReminder, "RIGHT", -8, 0)
+  shoppingReminderClose:SetText("X")
+  shoppingReminderClose:SetScript("OnClick", function()
+    WSGH.UI.DismissReforgeReminder()
+  end)
+
+  local function ShowReforgeReminderTooltip(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Did you reforge?", 1, 0.82, 0)
+    GameTooltip:AddLine("This import includes reforges, but the addon does not handle them.", 1, 1, 1, true)
+    GameTooltip:AddLine("Use ReforgeLite Classic separately, then verify your final stats still match WowSims.", 1, 1, 1, true)
+    GameTooltip:Show()
+  end
+
+  shoppingReminder:SetScript("OnEnter", ShowReforgeReminderTooltip)
+  shoppingReminder:SetScript("OnLeave", GameTooltip_Hide)
+
+  local entryHeight = WSGH.Const.UI.shopping.entryHeight
   local shoppingScroll = CreateFrame("ScrollFrame", "WowSimsGearHelperShoppingScroll", sidebar, "FauxScrollFrameTemplate")
   shoppingScroll:SetPoint("TOPLEFT", shoppingByline, "BOTTOMLEFT", 0, -8)
-  shoppingScroll:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -24, 10)
+  shoppingScroll:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -14, 14)
   shoppingScroll:SetScript("OnVerticalScroll", function(self, offset)
     FauxScrollFrame_OnVerticalScroll(self, offset, entryHeight, UpdateShoppingList)
   end)
 
   local shoppingEntries = {}
-  local entryHeight = WSGH.Const.UI.shopping.entryHeight
   local shoppingMaxEntries = 20
   for i = 1, shoppingMaxEntries do
     local entry = CreateFrame("Frame", nil, sidebar)
@@ -1379,6 +1597,7 @@ function WSGH.UI.Init()
     local itemName = self.itemId and GetItemInfo(self.itemId)
     GameTooltip:SetText("Search Auction House")
     GameTooltip:AddLine(itemName or "Search this item in the Auction House.", 1, 1, 1, true)
+    GameTooltip:AddLine("Uses the default Auction House only.", 0.8, 0.8, 0.8, true)
     GameTooltip:Show()
     end)
     entry.search:SetScript("OnLeave", GameTooltip_Hide)
@@ -1452,32 +1671,21 @@ function WSGH.UI.Init()
   WSGH.UI.shoppingScroll = shoppingScroll
   WSGH.UI.shoppingEntries = shoppingEntries
   WSGH.UI.shoppingEmpty = shoppingEmpty
+  WSGH.UI.shoppingReminder = shoppingReminder
+  WSGH.UI.shoppingReminderLabel = shoppingReminderLabel
   WSGH.UI.maxHeight = maxHeight
+  WSGH.UI.RefreshWindowBackgrounds()
   WSGH.UI.eventFrame = CreateFrame("Frame")
   WSGH.UI.eventFrame:SetFrameStrata("DIALOG")
   WSGH.UI.eventFrame:SetScript("OnEvent", OnEventDispatch)
   WSGH.UI.eventFrame.pollElapsed = 0
-  WSGH.UI.eventFrame:SetScript("OnUpdate", function(self, elapsed)
-    self.pollElapsed = (tonumber(self.pollElapsed) or 0) + (tonumber(elapsed) or 0)
-    if self.pollElapsed < 1.0 then return end
-    self.pollElapsed = 0
-
-    if not (WSGH.UI.frame and WSGH.UI.frame:IsShown()) then return end
-    if not WSGH.State or not WSGH.State.plan then return end
-
-    -- Some item changes (notably upgrades) may not fire equipment/bag events on all clients.
-    -- Poll for equipped-link and tooltip-upgrade changes while UI is open.
-    if HasEquippedSnapshotChanged() or HasUpgradeSnapshotChanged() then
-      BuildDiffAndRender()
-      if Guide.OnStateUpdated then Guide.OnStateUpdated() end
-    end
-  end)
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.InitializeHooks then
     WSGH.UI.Highlight.InitializeHooks()
   end
 
   LayoutRows()
+  SetAuxiliaryFramesShown(false)
 end
 
 function WSGH.UI.Render()
@@ -1607,7 +1815,12 @@ function WSGH.UI.Show()
     BuildDiffAndRender()
   end
   RegisterUIEvents()
+  SetRuntimePollingEnabled(true)
+  if WSGH.UI.Shopping and WSGH.UI.Shopping.EnableRuntimeListeners then
+    WSGH.UI.Shopping.EnableRuntimeListeners()
+  end
   WSGH.UI.frame:Show()
+  SetAuxiliaryFramesShown(true)
   WSGH.DB.profile.ui.shown = true
   if WSGH.UI.Highlight and WSGH.UI.Highlight.PrimeBags then
     WSGH.UI.Highlight.PrimeBags()
@@ -1618,6 +1831,11 @@ function WSGH.UI.Hide()
   if not WSGH.UI.frame then return end
   Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   UnregisterUIEvents()
+  SetRuntimePollingEnabled(false)
+  if WSGH.UI.Shopping and WSGH.UI.Shopping.DisableRuntimeListeners then
+    WSGH.UI.Shopping.DisableRuntimeListeners()
+  end
+  SetAuxiliaryFramesShown(false)
   WSGH.UI.frame:Hide()
   WSGH.DB.profile.ui.shown = false
   WSGH.UI.Highlight.SetTarget(nil, nil)
