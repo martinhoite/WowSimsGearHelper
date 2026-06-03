@@ -130,6 +130,9 @@ function WSGH.Util.GetPreferences()
   local prefs = _G.WowSimsGearHelperDB.profile.prefs
   if prefs.persistImports == nil then prefs.persistImports = false end
   if prefs.savedImportText == nil then prefs.savedImportText = nil end
+  if prefs.showReforgeReminderAfterImport == nil then prefs.showReforgeReminderAfterImport = true end
+  if prefs.showReforgeReminderOnRestore == nil then prefs.showReforgeReminderOnRestore = false end
+  if prefs.useOpaqueBackgroundForAllWindows == nil then prefs.useOpaqueBackgroundForAllWindows = false end
   if prefs.tinkers == nil then prefs.tinkers = {} end
   if prefs.highlightStyle == nil then
     prefs.highlightStyle = (WSGH.Const and WSGH.Const.HIGHLIGHT and WSGH.Const.HIGHLIGHT.style) or "label"
@@ -148,6 +151,41 @@ function WSGH.Util.GetPreferences()
   end
   WSGH.DB = _G.WowSimsGearHelperDB
   return prefs
+end
+
+local OPAQUE_WINDOW_COLOR = { 0.0235, 0.0314, 0.0510, 1 }
+
+function WSGH.Util.ShouldUseOpaqueWindowBackground(windowKind)
+  if windowKind == "help" or windowKind == "import" then
+    return true
+  end
+
+  local prefs = WSGH.Util.GetPreferences()
+  return prefs and prefs.useOpaqueBackgroundForAllWindows == true or false
+end
+
+function WSGH.Util.ApplyOpaqueWindowBackground(frame, windowKind, inset)
+  if not frame then return end
+
+  local useOpaque = WSGH.Util.ShouldUseOpaqueWindowBackground(windowKind)
+  local background = frame.wsghOpaqueBackground
+  if not background then
+    background = frame:CreateTexture(nil, "BACKGROUND")
+    frame.wsghOpaqueBackground = background
+  end
+
+  local backgroundInset = tonumber(inset) or 10
+  background:ClearAllPoints()
+  background:SetPoint("TOPLEFT", backgroundInset, -backgroundInset)
+  background:SetPoint("BOTTOMRIGHT", -backgroundInset, backgroundInset)
+  background:SetTexture("Interface\\Buttons\\WHITE8x8")
+  background:SetVertexColor(
+    OPAQUE_WINDOW_COLOR[1],
+    OPAQUE_WINDOW_COLOR[2],
+    OPAQUE_WINDOW_COLOR[3],
+    OPAQUE_WINDOW_COLOR[4]
+  )
+  background:SetShown(useOpaque)
 end
 
 function WSGH.Util.GetDefaultTinkerForSlot(slotId)

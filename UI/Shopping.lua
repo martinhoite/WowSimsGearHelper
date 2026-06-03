@@ -61,11 +61,51 @@ local function ResolveKnownNeededItemIdByName(itemName)
   return 0
 end
 
+local function StripAuctionQuantitySuffix(name)
+  if type(name) ~= "string" then return nil end
+  local stripped = name:gsub("%s*%([xX]?%d+%)%s*$", "")
+  stripped = WSGH.Util.Trim(stripped or "")
+  if stripped == "" then
+    return nil
+  end
+  return stripped
+end
+
+local ExtractAuctionWonMessageData
+
+local function ExtractAuctionQuantityFromMessage(message)
+  if type(message) ~= "string" then return 1 end
+  return tonumber(message:match("|rx(%d+)")) or tonumber(message:match("(%d+)%s*x")) or tonumber(message:match("x(%d+)")) or 1
+end
+
+local function ExtractAuctionWonNameByPhrase(message)
+  if type(message) ~= "string" or message == "" then
+    return nil
+  end
+
+  local lowerMessage = message:lower()
+  local markerStart, markerEnd = lowerMessage:find("auction for ", 1, true)
+  if not markerStart then
+    return nil
+  end
+
+  local candidate = message:sub(markerEnd + 1)
+  candidate = StripAuctionQuantitySuffix(candidate) or candidate
+  candidate = WSGH.Util.Trim(candidate or "")
+  if candidate == "" then
+    return nil
+  end
+
+  return candidate
+end
+
 local function HandleAuctionWonMessage(message)
   if not message then return end
   local itemLink = message:match("|Hitem:%d+.-|h%[[^]]+%]|h")
   local itemId = itemLink and select(1, GetItemInfoInstant(itemLink)) or nil
   local bracketName = nil
+  local parsedName = nil
+  local parsedCount = nil
   if (not itemId or itemId == 0) and type(message) == "string" then
     bracketName = message:match("%[([^%]]+)%]")
     if bracketName then
@@ -73,11 +113,10 @@ local function HandleAuctionWonMessage(message)
       itemId = link and select(1, GetItemInfoInstant(link)) or itemId
     end
   end
-  if (not itemId or itemId == 0) and type(ERR_AUCTION_WON_S) == "string" then
-    local pattern = "^" .. ERR_AUCTION_WON_S:gsub("%%s", "(.+)") .. "$"
-    local name = message:match(pattern)
-    if name then
-      local link = select(2, GetItemInfo(name))
+  if not itemId or itemId == 0 then
+    parsedName, parsedCount = ExtractAuctionWonMessageData(message)
+    if parsedName then
+      local link = select(2, GetItemInfo(parsedName))
       itemId = link and select(1, GetItemInfoInstant(link)) or itemId
     end
   end
@@ -85,7 +124,7 @@ local function HandleAuctionWonMessage(message)
     itemId = tonumber(message:match("|Hitem:(%d+)"))
   end
   if itemId and itemId ~= 0 then
-    local count = tonumber(message:match("|rx(%d+)")) or tonumber(message:match("(%d+)%s*x")) or tonumber(message:match("x(%d+)")) or 1
+    local count = parsedCount or ExtractAuctionQuantityFromMessage(message)
     WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
     if bracketName and WSGH.UI.pendingPurchasesByName then
       local pendingKey = WSGH.Util.NormalizeName(bracketName, true)
@@ -96,14 +135,25 @@ local function HandleAuctionWonMessage(message)
     end
     return
   end
-  if bracketName then
-    local neededItemId = ResolveKnownNeededItemIdByName(bracketName)
+  if parsedName then
+    local neededItemId = ResolveKnownNeededItemIdByName(parsedName)
     if neededItemId and neededItemId ~= 0 then
-      local count = tonumber(message:match("(%d+)%s*x")) or tonumber(message:match("x(%d+)")) or 1
+      local count = parsedCount or ExtractAuctionQuantityFromMessage(message)
       WSGH.UI.Shopping.RecordAuctionWin(neededItemId, count)
       return
     end
-    local count = tonumber(message:match("(%d+)%s*x")) or tonumber(message:match("x(%d+)")) or 1
+    local count = parsedCount or ExtractAuctionQuantityFromMessage(message)
+    WSGH.UI.Shopping.RecordAuctionWinByName(parsedName, count)
+    return
+  end
+  if bracketName then
+    local neededItemId = ResolveKnownNeededItemIdByName(bracketName)
+    if neededItemId and neededItemId ~= 0 then
+      local count = ExtractAuctionQuantityFromMessage(message)
+      WSGH.UI.Shopping.RecordAuctionWin(neededItemId, count)
+      return
+    end
+    local count = ExtractAuctionQuantityFromMessage(message)
     WSGH.UI.Shopping.RecordAuctionWinByName(bracketName, count)
   end
 end
@@ -113,36 +163,90 @@ local function EscapeLuaPattern(text)
   return (text:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1"))
 end
 
-local auctionWonMessagePatterns = nil
+local auctionWonMessageExtractors = nil
 
-local function BuildAuctionWonMessagePatterns()
-  if auctionWonMessagePatterns then
-    return auctionWonMessagePatterns
+local function BuildAuctionWonMessageExtractors()
+  if auctionWonMessageExtractors then
+    return auctionWonMessageExtractors
   end
 
-  auctionWonMessagePatterns = {}
+  auctionWonMessageExtractors = {}
   for globalName, globalValue in pairs(_G) do
     if type(globalName) == "string" and globalName:match("^ERR_AUCTION_WON") and type(globalValue) == "string" and globalValue ~= "" then
-      local escaped = EscapeLuaPattern(globalValue)
-      local pattern = "^" .. escaped:gsub("%%%%s", "(.+)"):gsub("%%%%d", "(%%d+)") .. "$"
-      auctionWonMessagePatterns[#auctionWonMessagePatterns + 1] = pattern
+      local patternParts = { "^" }
+      local tokens = {}
+      local index = 1
+
+      while index <= #globalValue do
+        local char = globalValue:sub(index, index)
+        if char == "%" then
+          local token = globalValue:sub(index + 1, index + 1)
+          if token == "s" then
+            patternParts[#patternParts + 1] = "(.+)"
+            tokens[#tokens + 1] = "s"
+            index = index + 2
+          elseif token == "d" then
+            patternParts[#patternParts + 1] = "(%d+)"
+            tokens[#tokens + 1] = "d"
+            index = index + 2
+          else
+            patternParts[#patternParts + 1] = EscapeLuaPattern(char)
+            index = index + 1
+          end
+        else
+          patternParts[#patternParts + 1] = EscapeLuaPattern(char)
+          index = index + 1
+        end
+      end
+
+      patternParts[#patternParts + 1] = "$"
+      auctionWonMessageExtractors[#auctionWonMessageExtractors + 1] = {
+        pattern = table.concat(patternParts),
+        tokens = tokens,
+      }
     end
   end
 
-  return auctionWonMessagePatterns
+  return auctionWonMessageExtractors
+end
+
+ExtractAuctionWonMessageData = function(message)
+  if type(message) ~= "string" or message == "" then
+    return nil, nil
+  end
+
+  for _, extractor in ipairs(BuildAuctionWonMessageExtractors()) do
+    local captures = { message:match(extractor.pattern) }
+    if #captures > 0 then
+      local parsedName = nil
+      local parsedCount = nil
+
+      for i, token in ipairs(extractor.tokens) do
+        local value = captures[i]
+        if token == "s" and parsedName == nil then
+          parsedName = value
+        elseif token == "d" and parsedCount == nil then
+          parsedCount = tonumber(value)
+        end
+      end
+
+      parsedName = StripAuctionQuantitySuffix(parsedName) or parsedName
+      parsedCount = parsedCount or ExtractAuctionQuantityFromMessage(message)
+      return parsedName, parsedCount
+    end
+  end
+
+  local phraseName = ExtractAuctionWonNameByPhrase(message)
+  if phraseName then
+    return phraseName, ExtractAuctionQuantityFromMessage(message)
+  end
+
+  return nil, nil
 end
 
 local function IsAuctionWonMessage(message)
-  if type(message) ~= "string" or message == "" then
-    return false
-  end
-  local patterns = BuildAuctionWonMessagePatterns()
-  for _, pattern in ipairs(patterns) do
-    if message:match(pattern) then
-      return true
-    end
-  end
-  return false
+  local parsedName = ExtractAuctionWonMessageData(message)
+  return parsedName ~= nil
 end
 
 local function IsLikelyAuctionWonChatMessage(message)
@@ -1015,6 +1119,7 @@ function WSGH.UI.Shopping.UpdateShoppingList()
                 local itemName = self.itemId and GetItemInfo(self.itemId)
                 GameTooltip:SetText("Search Auction House")
                 GameTooltip:AddLine(itemName or "Search this item in the Auction House.", 1, 1, 1, true)
+                GameTooltip:AddLine("Uses the default Auction House only.", 0.8, 0.8, 0.8, true)
               end
               GameTooltip:Show()
             end)
@@ -1083,6 +1188,25 @@ function WSGH.UI.Shopping.UpdateShoppingList()
     end
   end
   frame:SetHeight(math.max(height + padding, 120))
+  WSGH.UI.Shopping.UpdateReforgeReminder()
+end
+
+function WSGH.UI.Shopping.UpdateReforgeReminder()
+  local reminderFrame = WSGH.UI.shoppingReminder
+  if not reminderFrame then return end
+
+  local reminderState = WSGH.UI.reforgeReminder
+  local shouldShow = reminderState
+    and reminderState.hasReforges == true
+    and reminderState.hidden ~= true
+    and WSGH.State
+    and WSGH.State.plan
+
+  if shouldShow then
+    reminderFrame:Show()
+  else
+    reminderFrame:Hide()
+  end
 end
 
 WSGH.Debug = WSGH.Debug or {}
@@ -1188,14 +1312,6 @@ end
 local function EnsurePurchaseListener()
   if WSGH.UI.Shopping.purchaseListener then return end
   local listener = CreateFrame("Frame")
-  if C_AuctionHouse then
-    pcall(listener.RegisterEvent, listener, "AUCTION_HOUSE_SHOW_ITEM_WON_NOTIFICATION")
-    pcall(listener.RegisterEvent, listener, "AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION")
-  end
-  listener:RegisterEvent("AUCTION_HOUSE_SHOW")
-  listener:RegisterEvent("AUCTION_HOUSE_CLOSED")
-  listener:RegisterEvent("CHAT_MSG_SYSTEM")
-  listener:RegisterEvent("CHAT_MSG_LOOT")
   listener:SetScript("OnEvent", function(_, event, ...)
     if event == "AUCTION_HOUSE_SHOW" then
       StartAuctionChatPoller()
@@ -1217,20 +1333,11 @@ local function EnsurePurchaseListener()
     end
   end)
   WSGH.UI.Shopping.purchaseListener = listener
-  if IsAuctionHouseOpen() then
-    StartAuctionChatPoller()
-  end
 end
-
-EnsurePurchaseListener()
 
 local function EnsureItemDataListener()
   if WSGH.UI.Shopping.itemDataListener then return end
   local listener = CreateFrame("Frame")
-  listener:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-  if C_Item and C_Item.RequestLoadItemDataByID then
-    listener:RegisterEvent("ITEM_DATA_LOAD_RESULT")
-  end
   listener:SetScript("OnEvent", function(_, _, itemId, success)
     if success == false then return end
     if not (WSGH.UI and WSGH.UI.frame and WSGH.UI.frame:IsShown()) then return end
@@ -1254,4 +1361,48 @@ local function EnsureItemDataListener()
   WSGH.UI.Shopping.itemDataListener = listener
 end
 
-EnsureItemDataListener()
+function WSGH.UI.Shopping.EnableRuntimeListeners()
+  EnsurePurchaseListener()
+  EnsureItemDataListener()
+
+  local purchaseListener = WSGH.UI.Shopping.purchaseListener
+  if purchaseListener and not WSGH.UI.Shopping.purchaseListenerActive then
+    if C_AuctionHouse then
+      pcall(purchaseListener.RegisterEvent, purchaseListener, "AUCTION_HOUSE_SHOW_ITEM_WON_NOTIFICATION")
+      pcall(purchaseListener.RegisterEvent, purchaseListener, "AUCTION_HOUSE_SHOW_COMMODITY_WON_NOTIFICATION")
+    end
+    purchaseListener:RegisterEvent("AUCTION_HOUSE_SHOW")
+    purchaseListener:RegisterEvent("AUCTION_HOUSE_CLOSED")
+    purchaseListener:RegisterEvent("CHAT_MSG_SYSTEM")
+    purchaseListener:RegisterEvent("CHAT_MSG_LOOT")
+    WSGH.UI.Shopping.purchaseListenerActive = true
+    if IsAuctionHouseOpen() then
+      StartAuctionChatPoller()
+    end
+  end
+
+  local itemDataListener = WSGH.UI.Shopping.itemDataListener
+  if itemDataListener and not WSGH.UI.Shopping.itemDataListenerActive then
+    itemDataListener:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    if C_Item and C_Item.RequestLoadItemDataByID then
+      itemDataListener:RegisterEvent("ITEM_DATA_LOAD_RESULT")
+    end
+    WSGH.UI.Shopping.itemDataListenerActive = true
+  end
+end
+
+function WSGH.UI.Shopping.DisableRuntimeListeners()
+  StopAuctionChatPoller()
+
+  local purchaseListener = WSGH.UI.Shopping.purchaseListener
+  if purchaseListener and WSGH.UI.Shopping.purchaseListenerActive then
+    purchaseListener:UnregisterAllEvents()
+    WSGH.UI.Shopping.purchaseListenerActive = false
+  end
+
+  local itemDataListener = WSGH.UI.Shopping.itemDataListener
+  if itemDataListener and WSGH.UI.Shopping.itemDataListenerActive then
+    itemDataListener:UnregisterAllEvents()
+    WSGH.UI.Shopping.itemDataListenerActive = false
+  end
+end

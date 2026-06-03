@@ -53,12 +53,28 @@ function WSGH.UI.EnsureImportDialog()
     edgeSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
   })
+  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
+    WSGH.Util.ApplyOpaqueWindowBackground(dialog, "import")
+  end
 
   table.insert(UISpecialFrames, "WowSimsGearHelperImportDialog")
 
   local title = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", 18, -16)
   title:SetText("Import")
+
+  local helpButton = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
+  helpButton:SetSize(WSGH.Const.UI.help.textButton.width, WSGH.Const.UI.help.textButton.height)
+  helpButton:SetPoint("LEFT", title, "RIGHT", 10, -1)
+  helpButton:SetText("Help")
+  helpButton:SetScript("OnClick", function()
+    if WSGH.UI.Help and WSGH.UI.Help.Show then
+      WSGH.UI.Help.Show("details")
+    end
+  end)
+  if WSGH.UI.Help and WSGH.UI.Help.SetHelpTooltip then
+    WSGH.UI.Help.SetHelpTooltip(helpButton)
+  end
 
   local close = CreateFrame("Button", nil, dialog, "UIPanelCloseButton")
   close:SetPoint("TOPRIGHT", -5, -5)
@@ -206,23 +222,12 @@ function WSGH.UI.ImportFromDialog()
     return
   end
 
-  if WSGH.UI.ResetRuntimeState then
-    WSGH.UI.ResetRuntimeState()
-  end
-
-  WSGH.State = WSGH.State or {}
-  WSGH.State.plan = plan
-
-  local equipped = WSGH.Scan.Equipped.GetState()
-  local diff, derr = WSGH.Diff.Build(plan, equipped)
-  if not diff then
+  local ok, derr = WSGH.UI.ApplyImportedPlan and WSGH.UI.ApplyImportedPlan(plan, "manual")
+  if not ok then
     WSGH.Util.Print("Diff failed: " .. tostring(derr))
     if WSGH.UI.importDialog then WSGH.UI.importDialog.autoRunning = false end
     return
   end
-
-  WSGH.State.diff = diff
-  WSGH.UI.Render()
   WSGH.Util.Print("Imported.")
   WSGH.UI.importEditBox:ClearFocus()
   if WSGH.UI.importDialog then WSGH.UI.importDialog.autoRunning = false end
