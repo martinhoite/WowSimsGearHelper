@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.4] - 04 Jun, 2026
+
+### Added
+- Added help buttons to main and import-window that open an in-game guide of using the addon.
+- Imports that include reforges can now show a compact reminder below the shopping list, with separate settings for fresh imports and restored saved imports (settings defaults to ON).
+- Optional opaque backgrounds are now available for addon windows, with the help and import windows using the higher-contrast style by default to not "fight" with the other windows.
+
+### Fixed
+- Addon-owned secondary windows now close immediately on entering combat, and their runtime listeners stay disabled until the UI is shown again (previous Auction House fixes broke this behavior).
+- Default Auction House shopping purchase tracking now handles plain auction-win chat messages more reliably, as much as it can with the disaster Blizzard provides at least...
+
 ## [0.1.3] - 03 Jun, 2026
 
 ### Added
