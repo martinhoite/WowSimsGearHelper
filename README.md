@@ -1,7 +1,7 @@
 WowSims Gear Helper
 <!-- ![Alpha](https://img.shields.io/badge/alpha-0.1.2--alpha.2-blue) -->
 ![Alpha](https://img.shields.io/badge/alpha-none-lightgrey)
-![Beta](https://img.shields.io/badge/beta-0.1.2--beta.3-brightgreen)
+![Beta](https://img.shields.io/badge/beta-0.1.3-brightgreen)
 ===================
 
 <img src="WowSimsGearHelper_icon.png" alt="WowSims Gear Helper icon" width="128">
@@ -54,7 +54,7 @@ Please use GitHub Issues and include as much context as possible.
 
 Limitations
 -----------
-- Reforging is not handled. Use ReforgeLite: <https://www.curseforge.com/wow/addons/reforgelite>, an integration is planned to work with ReforgeLite from WSGH directly.
+- Reforging is not handled. Use ReforgeLite Classic: <https://www.curseforge.com/wow/addons/reforgelite-classic>, an integration is planned to work with ReforgeLite from WSGH directly.
 
 Attribution
 -----------
