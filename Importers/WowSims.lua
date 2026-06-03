@@ -164,7 +164,8 @@ function WowSimsImporter.FromDecoded(decoded)
       apiVersion = apiVersion,
       class = player.class,
       race = player.race,
-      name = player.name
+      name = player.name,
+      hasReforges = false,
     },
     slots = {} -- keyed by inventory slotId
   }
@@ -199,6 +200,9 @@ function WowSimsImporter.FromDecoded(decoded)
       randomSuffix = tonumber(e.randomSuffix) or 0,
       tinkerId = NormalizeTinkerId(e.tinker)
     }
+    if (tonumber(e.reforging) or 0) ~= 0 then
+      plan.meta.hasReforges = true
+    end
   end
 
   return plan

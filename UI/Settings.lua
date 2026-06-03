@@ -4,6 +4,7 @@ WSGH.UI = WSGH.UI or {}
 WSGH.UI.Settings = WSGH.UI.Settings or {}
 
 local optionsPanel
+local optionsCategory
 local optionsCategoryID
 
 local function GetPreferences()
@@ -36,6 +37,18 @@ local function BuildOptionsPanel()
   persistCheck:SetPoint("TOPLEFT", versionText, "BOTTOMLEFT", 0, -8)
   persistCheck.Text:SetText("Save last import")
   persistCheck:SetChecked(preferences.persistImports or false)
+
+  local restoreReminderCheck = CreateFrame("CheckButton", nil, optionsPanel, "ChatConfigCheckButtonTemplate")
+  restoreReminderCheck:SetPoint("TOPLEFT", persistCheck, "BOTTOMLEFT", 18, -4)
+  restoreReminderCheck.Text:SetText("Show reforge reminder when restoring last import")
+  restoreReminderCheck:SetChecked(preferences.showReforgeReminderOnRestore == true)
+
+  local function RefreshRestoreReminderCheck()
+    local enabled = persistCheck:GetChecked() == true
+    restoreReminderCheck:SetEnabled(enabled)
+    restoreReminderCheck.Text:SetTextColor(enabled and 1 or 0.5, enabled and 1 or 0.5, enabled and 1 or 0.5)
+  end
+
   persistCheck:SetScript("OnClick", function(self)
     local preferencesTable = GetPreferences()
     if not preferencesTable then return end
@@ -43,6 +56,7 @@ local function BuildOptionsPanel()
     if not self:GetChecked() then
       preferencesTable.savedImportText = nil
     end
+    RefreshRestoreReminderCheck()
   end)
   persistCheck:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -52,8 +66,27 @@ local function BuildOptionsPanel()
   end)
   persistCheck:SetScript("OnLeave", GameTooltip_Hide)
 
+  restoreReminderCheck:SetScript("OnClick", function(self)
+    local preferencesTable = GetPreferences()
+    if not preferencesTable then return end
+    preferencesTable.showReforgeReminderOnRestore = self:GetChecked() and true or false
+    if not self:GetChecked() and WSGH.UI and WSGH.UI.reforgeReminder and WSGH.UI.reforgeReminder.source == "restore" then
+      WSGH.UI.reforgeReminder.hidden = true
+      if WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateReforgeReminder then
+        WSGH.UI.Shopping.UpdateReforgeReminder()
+      end
+    end
+  end)
+  restoreReminderCheck:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Show reforge reminder when restoring last import", 1, 1, 1)
+    GameTooltip:AddLine("When a saved import is restored automatically, show the compact reforge reminder below the shopping list again if the plan includes reforges.", nil, nil, nil, true)
+    GameTooltip:Show()
+  end)
+  restoreReminderCheck:SetScript("OnLeave", GameTooltip_Hide)
+
   local minimapCheck = CreateFrame("CheckButton", nil, optionsPanel, "ChatConfigCheckButtonTemplate")
-  minimapCheck:SetPoint("TOPLEFT", persistCheck, "BOTTOMLEFT", 0, -6)
+  minimapCheck:SetPoint("TOPLEFT", restoreReminderCheck, "BOTTOMLEFT", -18, -6)
   minimapCheck.Text:SetText("Show minimap icon")
   minimapCheck:SetChecked(not (preferences.minimap and preferences.minimap.hide))
   minimapCheck:SetScript("OnClick", function(self)
@@ -73,8 +106,28 @@ local function BuildOptionsPanel()
   end)
   minimapCheck:SetScript("OnLeave", GameTooltip_Hide)
 
+  local opaqueBackgroundCheck = CreateFrame("CheckButton", nil, optionsPanel, "ChatConfigCheckButtonTemplate")
+  opaqueBackgroundCheck:SetPoint("TOPLEFT", minimapCheck, "BOTTOMLEFT", 0, -6)
+  opaqueBackgroundCheck.Text:SetText("Use opaque background for all windows")
+  opaqueBackgroundCheck:SetChecked(preferences.useOpaqueBackgroundForAllWindows == true)
+  opaqueBackgroundCheck:SetScript("OnClick", function(self)
+    local preferencesTable = GetPreferences()
+    if not preferencesTable then return end
+    preferencesTable.useOpaqueBackgroundForAllWindows = self:GetChecked() and true or false
+    if WSGH.UI and WSGH.UI.RefreshWindowBackgrounds then
+      WSGH.UI.RefreshWindowBackgrounds()
+    end
+  end)
+  opaqueBackgroundCheck:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Use opaque background for all windows", 1, 1, 1)
+    GameTooltip:AddLine("Apply the solid dark help/import background style to the main addon and shopping windows too.", nil, nil, nil, true)
+    GameTooltip:Show()
+  end)
+  opaqueBackgroundCheck:SetScript("OnLeave", GameTooltip_Hide)
+
   local useValorCheck = CreateFrame("CheckButton", nil, optionsPanel, "ChatConfigCheckButtonTemplate")
-  useValorCheck:SetPoint("TOPLEFT", minimapCheck, "BOTTOMLEFT", 0, -6)
+  useValorCheck:SetPoint("TOPLEFT", opaqueBackgroundCheck, "BOTTOMLEFT", 0, -6)
   useValorCheck.Text:SetText("Use Valor for upgrades")
   useValorCheck:SetChecked(preferences.useValorForUpgrades == true)
   useValorCheck:SetScript("OnClick", function(self)
@@ -95,14 +148,37 @@ local function BuildOptionsPanel()
   end)
   useValorCheck:SetScript("OnLeave", GameTooltip_Hide)
 
+  local reforgeReminderCheck = CreateFrame("CheckButton", nil, optionsPanel, "ChatConfigCheckButtonTemplate")
+  reforgeReminderCheck:SetPoint("TOPLEFT", useValorCheck, "BOTTOMLEFT", 0, -6)
+  reforgeReminderCheck.Text:SetText("Show reforging reminder after import")
+  reforgeReminderCheck:SetChecked(preferences.showReforgeReminderAfterImport ~= false)
+  reforgeReminderCheck:SetScript("OnClick", function(self)
+    local preferencesTable = GetPreferences()
+    if not preferencesTable then return end
+    preferencesTable.showReforgeReminderAfterImport = self:GetChecked() and true or false
+    if not self:GetChecked() and WSGH.UI and WSGH.UI.reforgeReminder and WSGH.UI.reforgeReminder.source == "manual" then
+      WSGH.UI.reforgeReminder.hidden = true
+      if WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateReforgeReminder then
+        WSGH.UI.Shopping.UpdateReforgeReminder()
+      end
+    end
+  end)
+  reforgeReminderCheck:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Show reforging reminder after import", 1, 1, 1)
+    GameTooltip:AddLine("After a manual import that includes reforges, show a compact reminder below the shopping list.", nil, nil, nil, true)
+    GameTooltip:Show()
+  end)
+  reforgeReminderCheck:SetScript("OnLeave", GameTooltip_Hide)
+
   local highlightLabel = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-  highlightLabel:SetPoint("TOPLEFT", useValorCheck, "BOTTOMLEFT", 0, -16)
+  highlightLabel:SetPoint("TOPLEFT", reforgeReminderCheck, "BOTTOMLEFT", 0, -16)
   highlightLabel:SetText("Highlight style:")
 
   local highlightDrop = CreateFrame("Frame", "WSGHHighlightStyle", optionsPanel, "UIDropDownMenuTemplate")
   highlightDrop:SetPoint("TOPLEFT", highlightLabel, "BOTTOMLEFT", -16, -4)
-  UIDropDownMenu_SetWidth(highlightDrop, 160)
-  UIDropDownMenu_SetButtonWidth(highlightDrop, 160)
+  UIDropDownMenu_SetWidth(highlightDrop, 205)
+  UIDropDownMenu_SetButtonWidth(highlightDrop, 205)
 
   UIDropDownMenu_Initialize(highlightDrop, function(self, level)
     local preferencesTable = GetPreferences() or {}
@@ -143,6 +219,7 @@ local function BuildOptionsPanel()
     highlightPrefs.highlightStyle = highlightInitial
   end
   UIDropDownMenu_SetSelectedValue(highlightDrop, highlightInitial)
+  RefreshRestoreReminderCheck()
 
   local tinkerLabel = optionsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   tinkerLabel:SetPoint("TOPLEFT", highlightDrop, "BOTTOMLEFT", 16, -12)
@@ -242,11 +319,9 @@ local function BuildOptionsPanel()
   CreateTinkerDropdown("WSGHDefaultTinkerBelt", "Belt", 6, mopTinkerOptions.belt)
 
   if Settings and Settings.RegisterAddOnCategory then
-    local category = Settings.RegisterCanvasLayoutCategory(optionsPanel, categoryName)
-    category.ID = categoryName
-    category.name = categoryName
-    WSGH.UI.optionsCategory = Settings.RegisterAddOnCategory(category)
-    optionsCategoryID = category.ID
+    optionsCategory = Settings.RegisterCanvasLayoutCategory(optionsPanel, categoryName)
+    WSGH.UI.optionsCategory = Settings.RegisterAddOnCategory(optionsCategory)
+    optionsCategoryID = optionsCategory and optionsCategory.ID or nil
   elseif InterfaceOptions_AddCategory then
     InterfaceOptions_AddCategory(optionsPanel)
     WSGH.UI.optionsPanel = optionsPanel

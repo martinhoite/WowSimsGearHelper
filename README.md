@@ -1,7 +1,8 @@
 WowSims Gear Helper
 <!-- ![Alpha](https://img.shields.io/badge/alpha-0.1.2--alpha.2-blue) -->
 ![Alpha](https://img.shields.io/badge/alpha-none-lightgrey)
-![Beta](https://img.shields.io/badge/beta-0.1.2--beta.3-brightgreen)
+![Beta](https://img.shields.io/badge/beta-none-lightgrey)
+![Release](https://img.shields.io/badge/release-1.0.0-success)
 ===================
 
 <img src="WowSimsGearHelper_icon.png" alt="WowSims Gear Helper icon" width="128">
@@ -16,6 +17,7 @@ Features
 - Support for extra sockets and tinkers.
 - Bag/character slot highlighting to guide actions.
 - Live shopping list updates as items are bought / obtained from mailbox.
+- Built-in quick help plus a more detailed import walkthrough.
 
 Supported Bag Addons
 --------------------
@@ -43,7 +45,8 @@ Usage
 -----
 1) Open the addon with `/wsgh`.
 2) Click Import and paste your WowSims export JSON.
-3) Follow the guided steps for sockets, enchants, and items.
+3) Use the `?` or `Help` buttons if you need a quick walkthrough.
+4) Follow the guided steps for sockets, enchants, items, and any separate reforging work.
 
 Report Bugs / Request Features
 ------------------------------
@@ -54,7 +57,8 @@ Please use GitHub Issues and include as much context as possible.
 
 Limitations
 -----------
-- Reforging is not handled. Use ReforgeLite: <https://www.curseforge.com/wow/addons/reforgelite>, an integration is planned to work with ReforgeLite from WSGH directly.
+- Reforging is not handled. Use ReforgeLite Classic: <https://www.curseforge.com/wow/addons/reforgelite-classic>, an integration is planned to work with ReforgeLite from WSGH directly.
+- The addon follows the data you import and attempts to flag issues, but you should still verify the result yourself.
 
 Attribution
 -----------

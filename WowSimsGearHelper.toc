@@ -1,10 +1,14 @@
-## Interface: 50503
+## Interface: 50504
 ## Title: WowSims Gear Helper
-## Notes: Paste WowSims exports and guide gear changes with highlights and shopping lists.
+## Notes: WSGH helps apply WowSims exports with guided gear changes, highlights, and shopping lists.
+## IconTexture: Interface\AddOns\WowSimsGearHelper\WowSimsGearHelper_icon.tga
 ## Author: Blazz
-## Version: 0.1.2-beta.3
+## Version: 1.0.0
+## OptionalDeps: Masque
 ## SavedVariablesPerCharacter: WowSimsGearHelperDB
 
+Libs/LibStub/LibStub.lua
+Libs/LibCustomGlow-1.0/LibCustomGlow-1.0.lua
 Libs/Json.lua
 
 Constants.lua
@@ -32,6 +36,6 @@ UI/Highlight.lua
 UI/Minimap.lua
 UI/Shopping.lua
 UI/Settings.lua
+UI/Help.lua
 UI/ImportDialog.lua
 UI.lua
-

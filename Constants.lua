@@ -176,12 +176,13 @@ WSGH.Const.DEFAULT_TINKERS = {
 }
 WSGH.Const.HIGHLIGHT = {
   style = "glow",
-  color = { 1, 0.8, 0.1 },
-  numberColor = { 1, 0.9, 0.2 },
+  color = { 0.95, 0.95, 0.32 },
+  numberColor = { 1, 0.95, 0.35 },
   styles = {
     { text = "Label only", value = "label" },
-    { text = "Action button glow", value = "glow" },
-    { text = "Autocast shine", value = "autocast" },
+    { text = "Blizzard-style glow", value = "glow" },
+    { text = "Autocast shine (light)", value = "autocast" },
+    { text = "Autocast shine (strong)", value = "autocast_strong" },
   },
 }
 
@@ -221,6 +222,23 @@ WSGH.Const.UI = {
     padding = 10,
     searchButton = { width = 20, height = 18 },
     searchIcon = { width = 12, height = 12 },
+    reminder = {
+      padding = 10,
+      height = 34,
+      actionButton = { width = 42, height = 18 },
+      closeButton = { width = 18, height = 18 },
+    },
     categories = { "Gems", "Enchants", "Other" },
+  },
+  help = {
+    iconButton = { width = 18, height = 18 },
+    textButton = { width = 56, height = 20 },
+    dialog = {
+      width = 620,
+      height = 420,
+      padding = 18,
+      topOffset = 40,
+    },
+    quickWidth = 560,
   },
 }
