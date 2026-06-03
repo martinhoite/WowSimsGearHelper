@@ -176,12 +176,13 @@ WSGH.Const.DEFAULT_TINKERS = {
 }
 WSGH.Const.HIGHLIGHT = {
   style = "glow",
-  color = { 1, 0.8, 0.1 },
-  numberColor = { 1, 0.9, 0.2 },
+  color = { 0.95, 0.95, 0.32 },
+  numberColor = { 1, 0.95, 0.35 },
   styles = {
     { text = "Label only", value = "label" },
-    { text = "Action button glow", value = "glow" },
-    { text = "Autocast shine", value = "autocast" },
+    { text = "Blizzard-style glow", value = "glow" },
+    { text = "Autocast shine (light)", value = "autocast" },
+    { text = "Autocast shine (strong)", value = "autocast_strong" },
   },
 }
 

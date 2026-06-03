@@ -1,6 +1,7 @@
 local WSGH = _G.WowSimsGearHelper or {}
 WSGH.UI = WSGH.UI or {}
 WSGH.UI.Highlight = WSGH.UI.Highlight or {}
+local LibCustomGlow = _G.LibStub and _G.LibStub("LibCustomGlow-1.0", true) or nil
 
 local HighlightState = {
   target = nil,
@@ -314,8 +315,6 @@ local function CreateIndicator(parent)
   return indicator
 end
 
-local autoCastShineId = 0
-
 local function GetHighlightStyle()
   if WSGH.Util and WSGH.Util.GetHighlightStyle then
     return WSGH.Util.GetHighlightStyle()
@@ -323,27 +322,38 @@ local function GetHighlightStyle()
   return WSGH.Const and WSGH.Const.HIGHLIGHT and WSGH.Const.HIGHLIGHT.style or "label"
 end
 
-local function EnsureAutoCastShine(parent)
+local function EnsureOverlayGlowProxy(parent)
   if not parent then return nil end
-  if parent.WSGHAutoCastShine then return parent.WSGHAutoCastShine end
-  if not CreateFrame or not AutoCastShine_AutoCastStart then return nil end
-  local parentName = parent.GetName and parent:GetName() or nil
-  local name
-  if parentName and parentName ~= "" then
-    name = parentName .. "WSGHAutoCastShine"
-  else
-    autoCastShineId = autoCastShineId + 1
-    name = "WSGHAutoCastShine" .. tostring(autoCastShineId)
+  if parent.WSGHOverlayGlowProxy then return parent.WSGHOverlayGlowProxy end
+
+  local proxy = CreateFrame("Frame", nil, parent)
+  proxy:SetFrameLevel((parent:GetFrameLevel() or 0) + 6)
+  proxy:SetAllPoints(parent)
+  proxy:EnableMouse(false)
+  parent.WSGHOverlayGlowProxy = proxy
+  return proxy
+end
+
+local function BuildGlowColor()
+  local color = WSGH.Const and WSGH.Const.HIGHLIGHT and WSGH.Const.HIGHLIGHT.color or { 1, 0.8, 0.1 }
+  local r = tonumber(color[1]) or 1
+  local g = tonumber(color[2]) or 0.8
+  local b = tonumber(color[3]) or 0.1
+  return { r, g, b, 1 }
+end
+
+local function StartAutoCastStyle(proxy, style)
+  if not (proxy and LibCustomGlow and LibCustomGlow.AutoCastGlow_Start) then
+    return false
   end
-  local shine = _G[name]
-  if not shine then
-    shine = CreateFrame("Frame", name, parent, "AutoCastShineTemplate")
+
+  local color = BuildGlowColor()
+  if style == "autocast_strong" then
+    LibCustomGlow.AutoCastGlow_Start(proxy, color, 6, 0.22, 1.35, 0, 0, nil, 8)
   else
-    shine:SetParent(parent)
+    LibCustomGlow.AutoCastGlow_Start(proxy, color, 4, 0.125, 1, 0, 0, nil, 8)
   end
-  shine:SetAllPoints(parent)
-  parent.WSGHAutoCastShine = shine
-  return shine
+  return true
 end
 
 local function ApplyHighlightStyle(parent, context)
@@ -351,14 +361,24 @@ local function ApplyHighlightStyle(parent, context)
   if context ~= "bag" and context ~= "slot" then return end
   local style = GetHighlightStyle()
   if style == "glow" then
+    if LibCustomGlow and LibCustomGlow.ButtonGlow_Start then
+      local proxy = EnsureOverlayGlowProxy(parent)
+      if proxy then
+        LibCustomGlow.ButtonGlow_Start(proxy)
+        return
+      end
+    end
+
     if ActionButton_ShowOverlayGlow then
       ActionButton_ShowOverlayGlow(parent)
     end
-  elseif style == "autocast" then
-    local shine = EnsureAutoCastShine(parent)
-    if shine and AutoCastShine_AutoCastStart then
-      AutoCastShine_AutoCastStart(shine)
-    elseif ActionButton_ShowOverlayGlow then
+  elseif style == "autocast" or style == "autocast_strong" then
+    local proxy = EnsureOverlayGlowProxy(parent)
+    if StartAutoCastStyle(proxy, style) then
+      return
+    end
+
+    if ActionButton_ShowOverlayGlow then
       ActionButton_ShowOverlayGlow(parent)
     end
   end
@@ -366,12 +386,19 @@ end
 
 local function ClearHighlightStyle(parent)
   if not parent then return end
-  if ActionButton_HideOverlayGlow then
-    ActionButton_HideOverlayGlow(parent)
+  local proxy = parent.WSGHOverlayGlowProxy
+  if proxy and LibCustomGlow and LibCustomGlow.ButtonGlow_Stop then
+    LibCustomGlow.ButtonGlow_Stop(proxy)
   end
-  local shine = parent.WSGHAutoCastShine
-  if shine and AutoCastShine_AutoCastStop then
-    AutoCastShine_AutoCastStop(shine)
+  if proxy and LibCustomGlow and LibCustomGlow.AutoCastGlow_Stop then
+    LibCustomGlow.AutoCastGlow_Stop(proxy)
+  end
+  if ActionButton_HideOverlayGlow then
+    if proxy then
+      ActionButton_HideOverlayGlow(proxy)
+    else
+      ActionButton_HideOverlayGlow(parent)
+    end
   end
 end
 

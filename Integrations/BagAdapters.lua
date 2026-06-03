@@ -308,25 +308,83 @@ local function BuildArkInventoryItemIndex()
   if not (ok and bagFrame and bagFrame:IsVisible()) then
     return index
   end
-  for _, frame, loc_id_window, bag_id_window, slot_id in ark.API.ItemFrameLoadedIterate(ark.Const.Location.Bag) do
-    if frame and frame:IsVisible() then
-      local blizzardBagId = frame.ARK_Data and frame.ARK_Data.blizzard_id or nil
-      if not blizzardBagId and ark.API.getBlizzardBagIdFromWindowId then
-        local okMap, mapped = pcall(ark.API.getBlizzardBagIdFromWindowId, loc_id_window, bag_id_window)
-        if okMap then
-          blizzardBagId = mapped
+
+  local function AppendItemFrame(itemId, frame)
+    itemId = tonumber(itemId) or 0
+    if itemId == 0 or not frame then
+      return
+    end
+    index[itemId] = index[itemId] or {}
+    index[itemId][#index[itemId] + 1] = frame
+  end
+
+  local function ExtractArkItemId(frame, loc_id_window, bag_id_window, slot_id)
+    if not frame then
+      return nil
+    end
+
+    local data = frame.ARK_Data or nil
+    local blizzardBagId = data and (data.blizzard_id or data.blizzardBagId or data.blizzardBagID) or nil
+    if not blizzardBagId and ark.API.getBlizzardBagIdFromWindowId then
+      local okMap, mapped = pcall(ark.API.getBlizzardBagIdFromWindowId, loc_id_window, bag_id_window)
+      if okMap then
+        blizzardBagId = mapped
+      end
+    end
+
+    local candidateSlots = {}
+    local slotCandidate = tonumber(slot_id) or nil
+    if slotCandidate and slotCandidate > 0 then
+      candidateSlots[#candidateSlots + 1] = slotCandidate
+    end
+    slotCandidate = tonumber(data and (data.slot_id or data.slotID or data.slot)) or nil
+    if slotCandidate and slotCandidate > 0 then
+      candidateSlots[#candidateSlots + 1] = slotCandidate
+    end
+    slotCandidate = frame.GetID and tonumber(frame:GetID()) or nil
+    if slotCandidate and slotCandidate > 0 then
+      candidateSlots[#candidateSlots + 1] = slotCandidate
+    end
+
+    if blizzardBagId then
+      for _, candidateSlot in ipairs(candidateSlots) do
+        if candidateSlot and candidateSlot > 0 then
+          local itemId = GetContainerItemIdCompat(blizzardBagId, candidateSlot)
+          if itemId and itemId ~= 0 then
+            return itemId
+          end
         end
       end
-      local itemId = blizzardBagId and slot_id and GetContainerItemIdCompat(blizzardBagId, slot_id) or nil
-      if not itemId or itemId == 0 then
-        local item = ark.API.ItemFrameItemTableGet and ark.API.ItemFrameItemTableGet(frame) or nil
-        local link = item and item.h or nil
-        itemId = link and select(2, GetItemInfoInstant(link)) or nil
+    end
+
+    local item = ark.API.ItemFrameItemTableGet and ark.API.ItemFrameItemTableGet(frame) or nil
+    local itemId = item and (item.item_id or item.itemId or item.id) or nil
+    if itemId and itemId ~= 0 then
+      return itemId
+    end
+
+    local link = item and (item.h or item.link or item.hyperlink or item.hl) or nil
+    if type(link) == "string" and link ~= "" then
+      local parsedItemId = select(2, GetItemInfoInstant(link))
+      if parsedItemId and parsedItemId ~= 0 then
+        return parsedItemId
       end
-      if itemId and itemId ~= 0 then
-        index[itemId] = index[itemId] or {}
-        index[itemId][#index[itemId] + 1] = frame
+    end
+
+    link = data and (data.itemLink or data.link or data.h) or nil
+    if type(link) == "string" and link ~= "" then
+      local parsedItemId = select(2, GetItemInfoInstant(link))
+      if parsedItemId and parsedItemId ~= 0 then
+        return parsedItemId
       end
+    end
+
+    return nil
+  end
+
+  for _, frame, loc_id_window, bag_id_window, slot_id in ark.API.ItemFrameLoadedIterate(ark.Const.Location.Bag) do
+    if frame and frame:IsVisible() then
+      AppendItemFrame(ExtractArkItemId(frame, loc_id_window, bag_id_window, slot_id), frame)
     end
   end
   return index

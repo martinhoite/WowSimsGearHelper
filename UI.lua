@@ -265,9 +265,13 @@ local function IsEngineeringWindowOpen()
   return false
 end
 
-local function OpenEngineeringProfession()
+local function OpenEngineeringProfession(allowProtectedCast)
   if IsEngineeringWindowOpen() then
     return true
+  end
+
+  if allowProtectedCast == nil then
+    allowProtectedCast = true
   end
 
   local professionName, skillLineId = GetEngineeringProfession()
@@ -275,7 +279,7 @@ local function OpenEngineeringProfession()
   if C_TradeSkillUI and C_TradeSkillUI.OpenTradeSkill and skillLineId then
     pcall(C_TradeSkillUI.OpenTradeSkill, skillLineId)
   end
-  if professionName and CastSpellByName and not IsEngineeringWindowOpen() then
+  if allowProtectedCast and professionName and CastSpellByName and not IsEngineeringWindowOpen() then
     pcall(CastSpellByName, professionName)
   end
 
@@ -462,10 +466,10 @@ local function TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft, 
   end
 
   -- If selection keeps failing while the frame is open, force one reopen to
-  -- reset internal trade-skill state, then continue retries.
+  -- reset internal trade-skill state when the non-protected API can do so.
   if not didForcedReopen and attemptsLeft <= 12 then
     CloseEngineeringWindowIfOpen()
-    OpenEngineeringProfession()
+    OpenEngineeringProfession(false)
     didForcedReopen = true
   end
 
@@ -595,6 +599,55 @@ local function ExecuteSocketHintAction(rowData)
   end
 end
 
+local function NextActionRequiresDirectClick(action)
+  if not action then return false end
+  return action.type == "SOCKET_GEM" or action.type == "APPLY_TINKER"
+end
+
+local function PrimeGuidanceForAction(action)
+  local t = action and action.task
+  if not t then return end
+
+  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
+    WSGH.UI.Shopping.ClearJPHighlight()
+  end
+
+  if action.type == "SOCKET_GEM" then
+    if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTargetsForSlot then
+      WSGH.UI.Highlight.SetTargetsForSlot(tonumber(t.slotId))
+    elseif WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
+      WSGH.UI.Highlight.SetTarget(tonumber(t.wantGemId), tonumber(t.socketIndex), tonumber(t.slotId))
+    end
+    if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
+      WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
+    end
+    if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestBagRefresh then
+      WSGH.UI.Highlight.RequestBagRefresh()
+    end
+    WSGH.Util.Print("Next step requires another click to open the socket UI.")
+    return
+  end
+
+  if action.type == "APPLY_ENCHANT" or action.type == "APPLY_TINKER" then
+    if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
+      WSGH.UI.Highlight.SetTarget(nil, nil)
+    end
+    if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
+      local highlightItemId = tonumber(t.wantEnchantItemId)
+      if action.type == "APPLY_TINKER" then
+        highlightItemId = nil
+      end
+      WSGH.UI.Highlight.SetEnchantTarget(tonumber(t.wantEnchantId), highlightItemId, tonumber(t.slotId))
+    end
+    if action.type == "APPLY_ENCHANT" and WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
+      WSGH.UI.Highlight.RequestEnchantBagRefresh()
+    end
+    if action.type == "APPLY_TINKER" then
+      WSGH.Util.Print("Next step requires another click to open Engineering for the tinker.")
+    end
+  end
+end
+
 local function ExecuteAction(action, rowData)
   if not action then return end
   if action.type == "SOCKET_GEM" then
@@ -660,7 +713,12 @@ function Guide.OnStateUpdated()
       local row = GetRowBySlotId(action.task.slotId)
       local nextAction = DetermineNextAction(row)
       if nextAction then
-        ExecuteAction(nextAction, row)
+        Guide.currentAction = nextAction
+        if NextActionRequiresDirectClick(nextAction) then
+          PrimeGuidanceForAction(nextAction)
+        else
+          ExecuteAction(nextAction, row)
+        end
       else
         WSGH.UI.Highlight.UpdateFromState()
       end

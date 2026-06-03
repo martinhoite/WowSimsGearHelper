@@ -4,6 +4,7 @@ WSGH.UI = WSGH.UI or {}
 WSGH.UI.Settings = WSGH.UI.Settings or {}
 
 local optionsPanel
+local optionsCategory
 local optionsCategoryID
 
 local function GetPreferences()
@@ -101,8 +102,8 @@ local function BuildOptionsPanel()
 
   local highlightDrop = CreateFrame("Frame", "WSGHHighlightStyle", optionsPanel, "UIDropDownMenuTemplate")
   highlightDrop:SetPoint("TOPLEFT", highlightLabel, "BOTTOMLEFT", -16, -4)
-  UIDropDownMenu_SetWidth(highlightDrop, 160)
-  UIDropDownMenu_SetButtonWidth(highlightDrop, 160)
+  UIDropDownMenu_SetWidth(highlightDrop, 205)
+  UIDropDownMenu_SetButtonWidth(highlightDrop, 205)
 
   UIDropDownMenu_Initialize(highlightDrop, function(self, level)
     local preferencesTable = GetPreferences() or {}
@@ -242,11 +243,9 @@ local function BuildOptionsPanel()
   CreateTinkerDropdown("WSGHDefaultTinkerBelt", "Belt", 6, mopTinkerOptions.belt)
 
   if Settings and Settings.RegisterAddOnCategory then
-    local category = Settings.RegisterCanvasLayoutCategory(optionsPanel, categoryName)
-    category.ID = categoryName
-    category.name = categoryName
-    WSGH.UI.optionsCategory = Settings.RegisterAddOnCategory(category)
-    optionsCategoryID = category.ID
+    optionsCategory = Settings.RegisterCanvasLayoutCategory(optionsPanel, categoryName)
+    WSGH.UI.optionsCategory = Settings.RegisterAddOnCategory(optionsCategory)
+    optionsCategoryID = optionsCategory and optionsCategory.ID or nil
   elseif InterfaceOptions_AddCategory then
     InterfaceOptions_AddCategory(optionsPanel)
     WSGH.UI.optionsPanel = optionsPanel

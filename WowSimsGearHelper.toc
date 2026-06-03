@@ -3,8 +3,11 @@
 ## Notes: Paste WowSims exports and guide gear changes with highlights and shopping lists.
 ## Author: Blazz
 ## Version: 0.1.2-beta.3
+## OptionalDeps: Masque
 ## SavedVariablesPerCharacter: WowSimsGearHelperDB
 
+Libs/LibStub/LibStub.lua
+Libs/LibCustomGlow-1.0/LibCustomGlow-1.0.lua
 Libs/Json.lua
 
 Constants.lua
