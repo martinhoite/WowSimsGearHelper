@@ -109,6 +109,9 @@ jobs:
             CURSEFORGE_CHANGELOG_BLOCK="Release ${VERSION}"
           fi
 
+          FULL_CHANGELOG_URL="https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md"
+          CURSEFORGE_CHANGELOG_BLOCK="$(printf 'Full changelog:\n%s\n\n%s' "$FULL_CHANGELOG_URL" "$CURSEFORGE_CHANGELOG_BLOCK")"
+
           {
             echo "github_body<<EOF"
             echo "$GITHUB_CHANGELOG_BLOCK"

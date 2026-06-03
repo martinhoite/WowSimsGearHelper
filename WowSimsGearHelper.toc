@@ -3,7 +3,7 @@
 ## Notes: WSGH helps apply WowSims exports with guided gear changes, highlights, and shopping lists.
 ## IconTexture: Interface\AddOns\WowSimsGearHelper\WowSimsGearHelper_icon.tga
 ## Author: Blazz
-## Version: 0.1.4
+## Version: 1.0.0
 ## OptionalDeps: Masque
 ## SavedVariablesPerCharacter: WowSimsGearHelperDB
 
@@ -39,4 +39,3 @@ UI/Settings.lua
 UI/Help.lua
 UI/ImportDialog.lua
 UI.lua
-

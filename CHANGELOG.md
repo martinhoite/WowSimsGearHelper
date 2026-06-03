@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.0] - 04 Jun, 2026
+
+### Snapshot
+- First full stable release of WowSims Gear Helper.
+- Guided WowSims import flow with gear, socket, enchant, upgrade, and shopping guidance.
+- Built-in help, bag addon highlights, and import/restoration quality-of-life options.
+
+### Planned
+- [Feature] Add profession-assisted apply flow for Enchanting and Blacksmithing sockets.
+- [Feature?] ReforgeLite integration.
+
 ## [0.1.4] - 04 Jun, 2026
 
 ### Added
