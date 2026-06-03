@@ -26,22 +26,22 @@ local function EnsureDB()
 
   if type(_G.WowSimsGearHelperDB.profile.prefs) ~= "table" then
     _G.WowSimsGearHelperDB.profile.prefs = {
+      persistImports = false,
+      savedImportText = nil,
       showReforgeReminderAfterImport = true,
       showReforgeReminderOnRestore = false,
       useOpaqueBackgroundForAllWindows = false,
-      persistImports = false,
-      savedImportText = nil,
       tinkers = {},
       upgradeCurrency = "JUSTICE",
       useValorForUpgrades = false,
     }
   end
-  if prefs.showReforgeReminderAfterImport == nil then prefs.showReforgeReminderAfterImport = true end
-  if prefs.showReforgeReminderOnRestore == nil then prefs.showReforgeReminderOnRestore = false end
-  if prefs.useOpaqueBackgroundForAllWindows == nil then prefs.useOpaqueBackgroundForAllWindows = false end
   local prefs = _G.WowSimsGearHelperDB.profile.prefs
   if prefs.persistImports == nil then prefs.persistImports = false end
   if prefs.savedImportText == nil then prefs.savedImportText = nil end
+  if prefs.showReforgeReminderAfterImport == nil then prefs.showReforgeReminderAfterImport = true end
+  if prefs.showReforgeReminderOnRestore == nil then prefs.showReforgeReminderOnRestore = false end
+  if prefs.useOpaqueBackgroundForAllWindows == nil then prefs.useOpaqueBackgroundForAllWindows = false end
   if prefs.tinkers == nil then prefs.tinkers = {} end
   if prefs.minimap == nil then prefs.minimap = { hide = false } end
   if prefs.minimap.hide == nil then prefs.minimap.hide = false end
