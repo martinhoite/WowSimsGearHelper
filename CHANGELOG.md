@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.3] - 03 Jun, 2026
+
+### Added
+- New highlight style options now include Blizzard-style glow plus light and strong autocast shine variants.
+
+### Fixed
+- Settings now open correctly from the main addon window on the current client.
+- Guidance no longer tries to reopen protected UIs from automatic inventory updates, avoiding post-patch blocked-action errors.
+- ArkInventory bag highlights now resolve visible item frames more reliably after recent client changes.
+
+### Changed
+- Bag and character highlight glows now use a bundled standalone glow library so the addon no longer depends on another addon providing the effect.
+- Blizzard-style glow coloring was adjusted to better match the familiar in-game yellow/gold alert look.
+
 ## [0.1.2-beta.3] - 07 May, 2026
 
 ### Changed
