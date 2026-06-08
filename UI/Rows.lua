@@ -54,8 +54,6 @@ end
 local function SocketHintDescription(rowData)
   if not rowData then return "Add missing socket." end
   local hintItemId = tonumber(rowData.socketHintItemId) or 0
-  local extraId = tonumber(rowData.socketHintExtraItemId) or 0
-  local extraCount = tonumber(rowData.socketHintExtraItemCount) or 0
 
   local desc
   if hintItemId ~= 0 then
@@ -64,22 +62,15 @@ local function SocketHintDescription(rowData)
       TrackPendingItemInfo(hintItemId)
       C_Item.RequestLoadItemDataByID(hintItemId)
     end
-    if name then
+    if tonumber(rowData.slotId) == 6 then
+      desc = "Add socket: Belt buckle."
+    elseif name then
       desc = ("Add missing socket: %s."):format(name)
     else
       desc = rowData.socketHintText or ("Add missing socket: item " .. hintItemId .. ".")
     end
   else
-    desc = "Add socket: Blacksmithing."
-  end
-  if extraId ~= 0 and extraCount > 0 then
-    local extraName = GetItemInfo(extraId)
-    if not extraName and C_Item and C_Item.RequestLoadItemDataByID then
-      TrackPendingItemInfo(extraId)
-      C_Item.RequestLoadItemDataByID(extraId)
-    end
-    extraName = extraName or ("item " .. extraId)
-    desc = desc .. (" Requires %d x %s."):format(extraCount, extraName)
+    desc = rowData.socketHintText or "Add socket: Blacksmithing."
   end
   return desc
 end
@@ -439,7 +430,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
     -- Lowest-priority warning: only show when no higher-priority action is needed.
     if rowData.rowStatus == "OK" and not rowData.socketHintText then
       statusText = warningSuffix
-      rowFrame.subtitle:SetTextColor(1, 0.82, 0.2)
+      rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
     else
       rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
     end
