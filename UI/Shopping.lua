@@ -101,11 +101,12 @@ end
 
 local function HandleAuctionWonMessage(message)
   if not message then return end
+  local parsedName, parsedCount = ExtractAuctionWonMessageData(message)
+  if not parsedName then return end
+
   local itemLink = message:match("|Hitem:%d+.-|h%[[^]]+%]|h")
   local itemId = itemLink and select(1, GetItemInfoInstant(itemLink)) or nil
   local bracketName = nil
-  local parsedName = nil
-  local parsedCount = nil
   if (not itemId or itemId == 0) and type(message) == "string" then
     bracketName = message:match("%[([^%]]+)%]")
     if bracketName then
@@ -114,18 +115,15 @@ local function HandleAuctionWonMessage(message)
     end
   end
   if not itemId or itemId == 0 then
-    parsedName, parsedCount = ExtractAuctionWonMessageData(message)
-    if parsedName then
-      local link = select(2, GetItemInfo(parsedName))
-      itemId = link and select(1, GetItemInfoInstant(link)) or itemId
-    end
+    local link = select(2, GetItemInfo(parsedName))
+    itemId = link and select(1, GetItemInfoInstant(link)) or itemId
   end
   if (not itemId or itemId == 0) and type(message) == "string" then
     itemId = tonumber(message:match("|Hitem:(%d+)"))
   end
   if itemId and itemId ~= 0 then
     local count = parsedCount or ExtractAuctionQuantityFromMessage(message)
-    WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
+    WSGH.UI.Shopping.RecordAuctionWin(itemId, count, "chat")
     if bracketName and WSGH.UI.pendingPurchasesByName then
       local pendingKey = WSGH.Util.NormalizeName(bracketName, true)
       if pendingKey == "" then
@@ -135,27 +133,14 @@ local function HandleAuctionWonMessage(message)
     end
     return
   end
-  if parsedName then
-    local neededItemId = ResolveKnownNeededItemIdByName(parsedName)
-    if neededItemId and neededItemId ~= 0 then
-      local count = parsedCount or ExtractAuctionQuantityFromMessage(message)
-      WSGH.UI.Shopping.RecordAuctionWin(neededItemId, count)
-      return
-    end
+  local neededItemId = ResolveKnownNeededItemIdByName(parsedName)
+  if neededItemId and neededItemId ~= 0 then
     local count = parsedCount or ExtractAuctionQuantityFromMessage(message)
-    WSGH.UI.Shopping.RecordAuctionWinByName(parsedName, count)
+    WSGH.UI.Shopping.RecordAuctionWin(neededItemId, count, "chat")
     return
   end
-  if bracketName then
-    local neededItemId = ResolveKnownNeededItemIdByName(bracketName)
-    if neededItemId and neededItemId ~= 0 then
-      local count = ExtractAuctionQuantityFromMessage(message)
-      WSGH.UI.Shopping.RecordAuctionWin(neededItemId, count)
-      return
-    end
-    local count = ExtractAuctionQuantityFromMessage(message)
-    WSGH.UI.Shopping.RecordAuctionWinByName(bracketName, count)
-  end
+  local count = parsedCount or ExtractAuctionQuantityFromMessage(message)
+  WSGH.UI.Shopping.RecordAuctionWinByName(parsedName, count)
 end
 
 local function EscapeLuaPattern(text)
@@ -253,18 +238,6 @@ local function IsLikelyAuctionWonChatMessage(message)
   if IsAuctionWonMessage(message) then
     return true
   end
-  if not IsAuctionHouseOpen() then
-    return false
-  end
-  if type(message) ~= "string" or message == "" then
-    return false
-  end
-  -- Fallback for clients/locales where auction system text constants do not
-  -- pattern-match reliably: treat item-link chat lines while AH is open as
-  -- potential auction wins, then let HandleAuctionWonMessage parse/validate.
-  if message:find("|Hitem:", 1, true) and message:find("|h%[[^%]]+%]|h") then
-    return true
-  end
   return false
 end
 
@@ -275,6 +248,52 @@ local function PruneRecentAuctionMessageKeys(now)
       WSGH.UI.Shopping.recentAuctionMessageKeys[key] = nil
     end
   end
+end
+
+local function PruneRecentAuctionEventWins(now)
+  WSGH.UI.Shopping.recentAuctionEventWins = WSGH.UI.Shopping.recentAuctionEventWins or {}
+  for key, data in pairs(WSGH.UI.Shopping.recentAuctionEventWins) do
+    if (now - (tonumber(data and data.time) or 0)) > 10 then
+      WSGH.UI.Shopping.recentAuctionEventWins[key] = nil
+    end
+  end
+end
+
+local function BuildAuctionWinKey(itemId, count)
+  itemId = tonumber(itemId) or 0
+  count = tonumber(count) or 1
+  if itemId == 0 then return nil end
+  return tostring(itemId) .. ":" .. tostring(count)
+end
+
+local function MarkRecentAuctionEventWin(itemId, count, now)
+  local key = BuildAuctionWinKey(itemId, count)
+  if not key then return end
+  now = tonumber(now) or (GetTime and GetTime()) or 0
+  PruneRecentAuctionEventWins(now)
+  WSGH.UI.Shopping.recentAuctionEventWins = WSGH.UI.Shopping.recentAuctionEventWins or {}
+  local data = WSGH.UI.Shopping.recentAuctionEventWins[key] or { count = 0, time = now }
+  data.count = (tonumber(data.count) or 0) + 1
+  data.time = now
+  WSGH.UI.Shopping.recentAuctionEventWins[key] = data
+end
+
+local function ConsumeRecentAuctionEventWin(itemId, count, now)
+  local key = BuildAuctionWinKey(itemId, count)
+  if not key then return false end
+  now = tonumber(now) or (GetTime and GetTime()) or 0
+  PruneRecentAuctionEventWins(now)
+  local data = WSGH.UI.Shopping.recentAuctionEventWins and WSGH.UI.Shopping.recentAuctionEventWins[key]
+  if not data or (tonumber(data.count) or 0) <= 0 then
+    return false
+  end
+  data.count = (tonumber(data.count) or 0) - 1
+  if data.count <= 0 then
+    WSGH.UI.Shopping.recentAuctionEventWins[key] = nil
+  else
+    data.time = now
+  end
+  return true
 end
 
 local function BuildAuctionWonMessageKey(message, messageId)
@@ -488,6 +507,43 @@ local function CountItemInBags(itemId, bagIndex)
   return count
 end
 
+local function ReconcilePendingPurchase(itemId, bagCount)
+  itemId = tonumber(itemId) or 0
+  if itemId == 0 then return 0 end
+  bagCount = tonumber(bagCount) or 0
+  WSGH.UI.pendingPurchases = WSGH.UI.pendingPurchases or {}
+  WSGH.UI.pendingPurchaseBagCounts = WSGH.UI.pendingPurchaseBagCounts or {}
+
+  local pending = tonumber(WSGH.UI.pendingPurchases[itemId]) or 0
+  if pending <= 0 then
+    WSGH.UI.pendingPurchases[itemId] = nil
+    WSGH.UI.pendingPurchaseBagCounts[itemId] = nil
+    return 0
+  end
+
+  local baseline = tonumber(WSGH.UI.pendingPurchaseBagCounts[itemId])
+  if baseline == nil then
+    baseline = bagCount
+    WSGH.UI.pendingPurchaseBagCounts[itemId] = baseline
+  end
+
+  local received = bagCount - baseline
+  if received > 0 then
+    pending = pending - received
+    if pending <= 0 then
+      WSGH.UI.pendingPurchases[itemId] = nil
+      WSGH.UI.pendingPurchaseBagCounts[itemId] = nil
+      return 0
+    end
+    WSGH.UI.pendingPurchases[itemId] = pending
+    WSGH.UI.pendingPurchaseBagCounts[itemId] = bagCount
+  elseif bagCount < baseline then
+    WSGH.UI.pendingPurchaseBagCounts[itemId] = bagCount
+  end
+
+  return pending
+end
+
 local function GetCurrencyAmountAndIcon(currencyId)
   currencyId = tonumber(currencyId) or 0
   if currencyId == 0 then return 0, nil end
@@ -533,6 +589,80 @@ local function ShowCurrencyTooltip(owner, currencyId)
     GameTooltip:SetText(("Currency %d"):format(currencyId))
   end
   GameTooltip:Show()
+end
+
+function WSGH.UI.Shopping.GetRowPurchaseNeeds(row, bagIndex, includeAvailable)
+  if not row then return {} end
+  if includeAvailable == nil then includeAvailable = true end
+  bagIndex = bagIndex or (WSGH.Scan.GetBagIndex and WSGH.Scan.GetBagIndex() or {})
+
+  local needsByItem = {}
+  local function accumulateNeed(itemId, count, category)
+    itemId = tonumber(itemId) or 0
+    count = tonumber(count) or 0
+    if itemId == 0 or count <= 0 then return end
+    if not needsByItem[itemId] then
+      needsByItem[itemId] = { count = 0, category = category }
+    end
+    needsByItem[itemId].count = needsByItem[itemId].count + count
+    if category and not needsByItem[itemId].category then
+      needsByItem[itemId].category = category
+    end
+  end
+
+  for _, task in ipairs(row.socketTasks or {}) do
+    if task.status and task.status ~= WSGH.Const.STATUS_OK then
+      accumulateNeed(task.wantGemId, 1, "Gems")
+    end
+  end
+
+  for _, task in ipairs(row.deferredSocketTasks or {}) do
+    accumulateNeed(task.wantGemId, 1, "Gems")
+  end
+
+  for _, task in ipairs(row.enchantTasks or {}) do
+    if task.status and task.status ~= WSGH.Const.STATUS_OK then
+      local category = (task.type == "APPLY_TINKER") and "Other" or "Enchants"
+      accumulateNeed(task.wantEnchantItemId, 1, category)
+    end
+  end
+
+  local hintId = tonumber(row.socketHintItemId) or 0
+  local missingSockets = tonumber(row.missingSockets) or 0
+  if hintId ~= 0 and missingSockets > 0 then
+    accumulateNeed(hintId, missingSockets, "Other")
+  end
+
+  local extraId = tonumber(row.socketHintExtraItemId) or 0
+  local extraCount = tonumber(row.socketHintExtraItemCount) or 0
+  if extraId ~= 0 and extraCount > 0 then
+    accumulateNeed(extraId, extraCount, "Other")
+  end
+
+  local needs = {}
+  for itemId, need in pairs(needsByItem) do
+    local totalNeeded = tonumber(need.count) or 0
+    local bagCount = includeAvailable and CountItemInBags(itemId, bagIndex) or 0
+    local remaining = includeAvailable and (totalNeeded - bagCount) or totalNeeded
+    if remaining > 0 then
+      local pending = includeAvailable and ReconcilePendingPurchase(itemId, bagCount) or 0
+      needs[#needs + 1] = {
+        itemId = itemId,
+        count = remaining,
+        totalNeeded = totalNeeded,
+        bought = math.min(remaining, pending),
+        category = need.category or "Other",
+      }
+    end
+  end
+
+  table.sort(needs, function(a, b)
+    if a.category ~= b.category then
+      return tostring(a.category) < tostring(b.category)
+    end
+    return (tonumber(a.itemId) or 0) < (tonumber(b.itemId) or 0)
+  end)
+  return needs
 end
 
 local function GetUpgradeCurrencyConfig()
@@ -599,10 +729,14 @@ function WSGH.UI.Shopping.SearchAuctionHouseById(itemId)
   return false
 end
 
-function WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
+function WSGH.UI.Shopping.RecordAuctionWin(itemId, count, source)
   if not itemId or itemId == 0 then return end
   count = tonumber(count) or 1
   local now = GetTime and GetTime() or 0
+  if source == "chat" and ConsumeRecentAuctionEventWin(itemId, count, now) then
+    DebugShopping(("[Shopping] Auction chat duplicate ignored: id %d x%d"):format(itemId, count))
+    return
+  end
   WSGH.UI.lastPurchase = WSGH.UI.lastPurchase or {}
   local last = WSGH.UI.lastPurchase
   -- Auction wins can fire through multiple channels almost at once (AH event + chat).
@@ -613,8 +747,17 @@ function WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
   last.itemId = itemId
   last.count = count
   last.time = now
+  local bagIndex = WSGH.Scan.GetBagIndex and WSGH.Scan.GetBagIndex() or {}
+  local currentBagCount = CountItemInBags(itemId, bagIndex)
   WSGH.UI.pendingPurchases = WSGH.UI.pendingPurchases or {}
+  WSGH.UI.pendingPurchaseBagCounts = WSGH.UI.pendingPurchaseBagCounts or {}
+  if (tonumber(WSGH.UI.pendingPurchases[itemId]) or 0) <= 0 then
+    WSGH.UI.pendingPurchaseBagCounts[itemId] = currentBagCount
+  end
   WSGH.UI.pendingPurchases[itemId] = (WSGH.UI.pendingPurchases[itemId] or 0) + count
+  if source == "event" then
+    MarkRecentAuctionEventWin(itemId, count, now)
+  end
   DebugShopping(("[Shopping] Auction win recorded: id %d x%d"):format(itemId, count))
   RefreshAfterPurchase()
 end
@@ -649,12 +792,16 @@ function WSGH.UI.Shopping.UpdateShoppingList()
     byline:SetWidth(math.max((frame:GetWidth() or WSGH.Const.UI.shopping.sidebarWidth) - 28, 120))
   end
   WSGH.UI.pendingPurchases = WSGH.UI.pendingPurchases or {}
+  WSGH.UI.pendingPurchaseBagCounts = WSGH.UI.pendingPurchaseBagCounts or {}
   WSGH.UI.pendingPurchasesByName = WSGH.UI.pendingPurchasesByName or {}
   local bagIndex = WSGH.Scan.GetBagIndex and WSGH.Scan.GetBagIndex() or {}
 
   for pendingName, pendingCount in pairs(WSGH.UI.pendingPurchasesByName) do
     local resolvedItemId = ResolveKnownNeededItemIdByName(pendingName)
     if resolvedItemId and resolvedItemId ~= 0 then
+      if (tonumber(WSGH.UI.pendingPurchases[resolvedItemId]) or 0) <= 0 then
+        WSGH.UI.pendingPurchaseBagCounts[resolvedItemId] = CountItemInBags(resolvedItemId, bagIndex)
+      end
       WSGH.UI.pendingPurchases[resolvedItemId] = (WSGH.UI.pendingPurchases[resolvedItemId] or 0) + (tonumber(pendingCount) or 0)
       WSGH.UI.pendingPurchasesByName[pendingName] = nil
     end
@@ -687,54 +834,8 @@ function WSGH.UI.Shopping.UpdateShoppingList()
       if row.rowStatus == "WRONG_ITEM" then
         hasPendingEquipTasks = true
       end
-      for _, task in ipairs(row.socketTasks or {}) do
-        if task.status and task.status ~= WSGH.Const.STATUS_OK then
-          local wantGemId = tonumber(task.wantGemId) or 0
-          if wantGemId ~= 0 then
-            AccumulateNeed(wantGemId, 1, "Gems")
-          end
-        end
-      end
-      for _, task in ipairs(row.deferredSocketTasks or {}) do
-        local wantGemId = tonumber(task.wantGemId) or 0
-        if wantGemId ~= 0 then
-          AccumulateNeed(wantGemId, 1, "Gems")
-        end
-      end
-      for _, task in ipairs(row.enchantTasks or {}) do
-        if task.status and task.status ~= WSGH.Const.STATUS_OK then
-          local enchantItemId = tonumber(task.wantEnchantItemId) or 0
-          if enchantItemId ~= 0 then
-            local category = (task.type == "APPLY_TINKER") and "Other" or "Enchants"
-            AccumulateNeed(enchantItemId, 1, category)
-          end
-        end
-      end
-
-      -- Add socket-creation items (e.g., belt buckles) when the plan expects more sockets than the item has.
-      local hintId = tonumber(row.socketHintItemId) or 0
-      local missingSockets = tonumber(row.missingSockets) or 0
-      if hintId ~= 0 and missingSockets > 0 then
-        local bagCount = 0
-        for _, location in ipairs(bagIndex[hintId] or {}) do
-          bagCount = bagCount + (location.count or 1)
-        end
-        local remaining = missingSockets - bagCount
-        if remaining > 0 then
-          AccumulateNeed(hintId, remaining, "Other")
-        end
-      end
-      local extraId = tonumber(row.socketHintExtraItemId) or 0
-      local extraCount = tonumber(row.socketHintExtraItemCount) or 0
-      if extraId ~= 0 and extraCount > 0 then
-        local bagCount = 0
-        for _, location in ipairs(bagIndex[extraId] or {}) do
-          bagCount = bagCount + (location.count or 1)
-        end
-        local remaining = extraCount - bagCount
-        if remaining > 0 then
-          AccumulateNeed(extraId, remaining, "Other")
-        end
+      for _, need in ipairs(WSGH.UI.Shopping.GetRowPurchaseNeeds(row, bagIndex, false)) do
+        AccumulateNeed(need.itemId, need.count, need.category)
       end
 
       for _, task in ipairs(row.upgradeTasks or {}) do
@@ -837,7 +938,7 @@ function WSGH.UI.Shopping.UpdateShoppingList()
     for _, location in ipairs(bagIndex[itemId] or {}) do
       bagCount = bagCount + (location.count or 1)
     end
-    local pending = tonumber(WSGH.UI.pendingPurchases[itemId]) or 0
+    local pending = ReconcilePendingPurchase(itemId, bagCount)
 
     local totalNeeded = tonumber(need.count) or 0
     local remaining = totalNeeded - bagCount
@@ -855,10 +956,25 @@ function WSGH.UI.Shopping.UpdateShoppingList()
       }
     else
       WSGH.UI.pendingPurchases[itemId] = nil
+      if WSGH.UI.pendingPurchaseBagCounts then
+        WSGH.UI.pendingPurchaseBagCounts[itemId] = nil
+      end
     end
   end
   for _, bucket in pairs(itemsByCategory) do
-    table.sort(bucket, function(a, b) return a.itemId < b.itemId end)
+    table.sort(bucket, function(a, b)
+      local aIsCurrency = a and a.isCurrency == true
+      local bIsCurrency = b and b.isCurrency == true
+      if aIsCurrency ~= bIsCurrency then
+        return not aIsCurrency
+      end
+      local aKey = tonumber(a and (a.itemId or a.actionItemId or a.currencyId)) or 0
+      local bKey = tonumber(b and (b.itemId or b.actionItemId or b.currencyId)) or 0
+      if aKey ~= bKey then
+        return aKey < bKey
+      end
+      return tostring(a and (a.currencyKey or a.category) or "") < tostring(b and (b.currencyKey or b.category) or "")
+    end)
   end
 
   for _, cat in ipairs(categoryOrder) do
@@ -1258,43 +1374,23 @@ function WSGH.Debug.DumpShoppingItem(itemId)
 
   local diff = WSGH.State and WSGH.State.diff
   local bagIndex = WSGH.Scan.GetBagIndex and WSGH.Scan.GetBagIndex() or {}
-  local pending = WSGH.UI.pendingPurchases and WSGH.UI.pendingPurchases[itemId] or 0
   local needCount = 0
-
-  if diff and diff.rows then
-    for _, row in ipairs(diff.rows) do
-      for _, task in ipairs(row.socketTasks or {}) do
-        if task.status and task.status ~= WSGH.Const.STATUS_OK and tonumber(task.wantGemId) == itemId then
-          needCount = needCount + 1
-        end
-      end
-      for _, task in ipairs(row.deferredSocketTasks or {}) do
-        if tonumber(task.wantGemId) == itemId then
-          needCount = needCount + 1
-        end
-      end
-      for _, task in ipairs(row.enchantTasks or {}) do
-        if task.status and task.status ~= WSGH.Const.STATUS_OK and task.type == "APPLY_ENCHANT" and tonumber(task.wantEnchantItemId) == itemId then
-          needCount = needCount + 1
-        end
-      end
-      local hintId = tonumber(row.socketHintItemId) or 0
-      local missingSockets = tonumber(row.missingSockets) or 0
-      if hintId == itemId and missingSockets > 0 then
-        needCount = needCount + missingSockets
-      end
-      local extraId = tonumber(row.socketHintExtraItemId) or 0
-      local extraCount = tonumber(row.socketHintExtraItemCount) or 0
-      if extraId == itemId and extraCount > 0 then
-        needCount = needCount + extraCount
-      end
-    end
-  end
 
   local bagCount = 0
   for _, location in ipairs(bagIndex[itemId] or {}) do
     bagCount = bagCount + (location.count or 1)
   end
+  if diff and diff.rows then
+    for _, row in ipairs(diff.rows) do
+      for _, need in ipairs(WSGH.UI.Shopping.GetRowPurchaseNeeds(row, bagIndex, false)) do
+        if tonumber(need.itemId) == itemId then
+          needCount = needCount + (tonumber(need.count) or 0)
+        end
+      end
+    end
+  end
+
+  local pending = ReconcilePendingPurchase(itemId, bagCount)
   local remaining = needCount - bagCount
   if remaining < 0 then remaining = 0 end
 
@@ -1322,9 +1418,9 @@ local function EnsurePurchaseListener()
       local itemId = ExtractItemIdFromAuctionRef(itemRef)
       local count = tonumber(quantity) or tonumber((type(itemRef) == "table" and (itemRef.quantity or itemRef.stackSize)) or 0) or 1
       if itemId and itemId ~= 0 then
-        WSGH.UI.Shopping.RecordAuctionWin(itemId, count)
+        WSGH.UI.Shopping.RecordAuctionWin(itemId, count, "event")
       end
-    elseif event == "CHAT_MSG_SYSTEM" or event == "CHAT_MSG_LOOT" then
+    elseif event == "CHAT_MSG_SYSTEM" then
       local message = ...
       local messageId = select(11, ...)
       if ShouldHandleAuctionWonMessage(message, messageId) then
@@ -1374,7 +1470,6 @@ function WSGH.UI.Shopping.EnableRuntimeListeners()
     purchaseListener:RegisterEvent("AUCTION_HOUSE_SHOW")
     purchaseListener:RegisterEvent("AUCTION_HOUSE_CLOSED")
     purchaseListener:RegisterEvent("CHAT_MSG_SYSTEM")
-    purchaseListener:RegisterEvent("CHAT_MSG_LOOT")
     WSGH.UI.Shopping.purchaseListenerActive = true
     if IsAuctionHouseOpen() then
       StartAuctionChatPoller()
