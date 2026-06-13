@@ -768,7 +768,7 @@ local function RefreshEnchantHighlights()
       enchant.lastSlotKey = slotKey
       local indicator = CreateIndicator(slotButton)
       if indicator then
-        SetIndicatorLabel(indicator, "E")
+        SetIndicatorLabel(indicator, "")
         indicator:Show()
         ApplyHighlightStyle(slotButton, "slot")
         enchant.slotIndicators[slotButton] = true
@@ -856,7 +856,7 @@ local function RefreshSocketHintHighlights()
       hint.lastSlotKey = slotKey
       local indicator = CreateIndicator(slotButton)
       if indicator then
-        SetIndicatorLabel(indicator, "S")
+        SetIndicatorLabel(indicator, "")
         indicator:Show()
         ApplyHighlightStyle(slotButton, "slot")
         hint.slotIndicators[slotButton] = true
