@@ -32,11 +32,19 @@ local function ParseItemLink(link)
 
   local itemId = tonumber(fields[1]) or 0
   local rawEnchantEffectId = tonumber(fields[2]) or 0
+  local rawReforgeId = tonumber(fields[10]) or 0
   local enchantId = rawEnchantEffectId
+  local reforgeId = 0
 
   -- Map item-link enchant effectIds to spellIds via shared data table.
   if WSGH.Data and WSGH.Data.Enchants and WSGH.Data.Enchants.NormalizeEffectId then
     enchantId = WSGH.Data.Enchants.NormalizeEffectId(enchantId)
+  end
+  if WSGH.Integrations and WSGH.Integrations.ReforgeLite and WSGH.Integrations.ReforgeLite.NormalizeReforgeId then
+    reforgeId = WSGH.Integrations.ReforgeLite.NormalizeReforgeId(rawReforgeId)
+  elseif rawReforgeId ~= 0 then
+    local normalized = rawReforgeId - 112
+    reforgeId = normalized > 0 and normalized or 0
   end
 
   -- Parse gem fields from the link first (preserves empty fields).
@@ -67,6 +75,8 @@ local function ParseItemLink(link)
     itemId = itemId,
     rawEnchantEffectId = rawEnchantEffectId,
     enchantId = enchantId,
+    rawReforgeId = rawReforgeId,
+    reforgeId = reforgeId,
     gemsByIndex = gemsByIndex,
     maxGemSlot = maxGemSlot,
   }
@@ -107,6 +117,8 @@ function WSGH.Scan.Equipped.GetState()
         itemId = 0,
         rawEnchantEffectId = 0,
         enchantId = 0,
+        rawReforgeId = 0,
+        reforgeId = 0,
         gemsByIndex = {},
         maxGemSlot = 0,
       }
@@ -125,6 +137,8 @@ function WSGH.Scan.Equipped.GetState()
         itemLink = link,
         itemId = parsed.itemId,
         enchantId = parsed.enchantId,
+        rawReforgeId = parsed.rawReforgeId,
+        reforgeId = parsed.reforgeId,
         gemsByIndex = parsed.gemsByIndex,
         socketCount = 0,
         statsSocketCount = statsSocketCount,
@@ -167,6 +181,8 @@ function WSGH.Scan.Equipped.GetState()
         itemLink = nil,
         itemId = 0,
         enchantId = 0,
+        rawReforgeId = 0,
+        reforgeId = 0,
         gemsByIndex = {},
         socketCount = 0,
         itemLevel = 0,
@@ -199,6 +215,7 @@ function WSGH.Debug.DumpSlot(slotId)
   local fields = { strsplit(":", itemString) }
   local itemId = tonumber(fields[1]) or 0
   local rawEnchantEffectId = tonumber(fields[2]) or 0
+  local rawReforgeId = tonumber(fields[10]) or 0
   local gems = {}
   for i = 1, 4 do
     gems[i] = tonumber(fields[2 + i]) or 0
@@ -207,6 +224,8 @@ function WSGH.Debug.DumpSlot(slotId)
     itemId = itemId,
     rawEnchantEffectId = rawEnchantEffectId,
     enchantId = rawEnchantEffectId,
+    rawReforgeId = rawReforgeId,
+    reforgeId = 0,
     gemsByIndex = {},
     maxGemSlot = 0,
   }
@@ -243,11 +262,13 @@ function WSGH.Debug.DumpSlot(slotId)
   )
   local itemLevel = tonumber(GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link)) or select(4, GetItemInfo(link)) or 0
 
-  WSGH.Util.Print(("DumpSlot %d: itemId=%d enchantEffectId=%d normalizedEnchantId=%d link=%s"):format(
+  WSGH.Util.Print(("DumpSlot %d: itemId=%d enchantEffectId=%d normalizedEnchantId=%d reforgeRaw=%d reforge=%d link=%s"):format(
     slotId,
     itemId,
     rawEnchantEffectId,
     tonumber(parsed.enchantId) or 0,
+    tonumber(parsed.rawReforgeId) or rawReforgeId,
+    tonumber(parsed.reforgeId) or 0,
     link
   ))
   WSGH.Util.Print(("Gems from link: %d, %d, %d, %d"):format(gems[1], gems[2], gems[3], gems[4]))

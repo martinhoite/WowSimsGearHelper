@@ -26,6 +26,21 @@ local function StatusIcon(status)
   return WSGH.Const.ICON_NOTREADY
 end
 
+local function SetActionButtonReforgeStyle(button, enabled)
+  if not button then return end
+
+  if enabled then
+    if button.GetFontString and button:GetFontString() then
+      button:GetFontString():SetTextColor(1, 1, 1, 1)
+    end
+    return
+  end
+
+  if button.GetFontString and button:GetFontString() then
+    button:GetFontString():SetTextColor(1, 0.82, 0, 1)
+  end
+end
+
 local function CountRowRemainingTasks(rowData)
   if not rowData then return 0 end
   local count = 0
@@ -45,6 +60,9 @@ local function CountRowRemainingTasks(rowData)
     if task.status ~= WSGH.Const.STATUS_OK then count = count + 1 end
   end
   for _, task in ipairs(rowData.upgradeTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then count = count + 1 end
+  end
+  for _, task in ipairs(rowData.reforgeTasks or {}) do
     if task.status ~= WSGH.Const.STATUS_OK then count = count + 1 end
   end
   return count
@@ -68,6 +86,20 @@ local function ShowTooltip(frame, itemLinkOrId)
     GameTooltip:SetItemByID(itemLinkOrId)
   end
   GameTooltip:Show()
+end
+
+local function ShowEquippedTooltip(frame, slotId, fallbackLink)
+  slotId = tonumber(slotId) or 0
+  if slotId ~= 0 then
+    GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+    local hasItem = GameTooltip:SetInventoryItem("player", slotId)
+    if hasItem then
+      GameTooltip:Show()
+      return
+    end
+  end
+
+  ShowTooltip(frame, fallbackLink)
 end
 
 local function HasItemInBags(itemId)
@@ -126,36 +158,45 @@ local function GetSpellName(spellId, fallbackPrefix)
   return name or ((fallbackPrefix or "spell") .. " " .. tostring(spellId))
 end
 
-local function FormatCurrentGemText(gemIds)
+local function GetColoredItemName(itemId, fallbackPrefix)
+  itemId = tonumber(itemId) or 0
+  if itemId == 0 then return nil end
+
+  local name, _, quality = GetItemInfo(itemId)
+  if not name and C_Item and C_Item.RequestLoadItemDataByID then
+    TrackPendingItemInfo(itemId)
+    C_Item.RequestLoadItemDataByID(itemId)
+  end
+  if not name then
+    return (fallbackPrefix or "item") .. " " .. tostring(itemId)
+  end
+
+  local qualityColor = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[tonumber(quality) or 0]
+  if qualityColor and qualityColor.hex then
+    return qualityColor.hex .. name .. "|r"
+  end
+  return name
+end
+
+local function BuildCurrentGemLines(gemIds)
   if type(gemIds) ~= "table" or #gemIds == 0 then
     return nil
   end
 
-  local names = {}
-  for i = 1, math.min(#gemIds, 2) do
-    local gemId = tonumber(gemIds[i]) or 0
+  local lines = {}
+  for i, gemIdValue in ipairs(gemIds) do
+    local gemId = tonumber(gemIdValue) or 0
     if gemId ~= 0 then
-      local name = GetItemInfo(gemId)
-      if not name and C_Item and C_Item.RequestLoadItemDataByID then
-        C_Item.RequestLoadItemDataByID(gemId)
-      end
-      names[#names + 1] = name or ("item " .. tostring(gemId))
+      local gemName = GetColoredItemName(gemId, "item") or ("item " .. tostring(gemId))
+      lines[#lines + 1] = ("Socket %d: %s"):format(i, gemName)
     end
   end
 
-  if #names == 0 then
-    return "socketed gems"
+  if #lines == 0 then
+    return nil
   end
 
-  local text = names[1]
-  if #names >= 2 then
-    text = text .. ", " .. names[2]
-  end
-  local remaining = #gemIds - #names
-  if remaining > 0 then
-    text = text .. (", +%d more"):format(remaining)
-  end
-  return text
+  return lines
 end
 
 local badgeCategoryColor = { 1, 0.82, 0 }
@@ -385,6 +426,34 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
     addCategory("Upgrades", { ("Upgrade item: %d/%d -> %d/%d."):format(currentStep, maxStep, targetStep, maxStep) })
   end
 
+  local reforgeLines = {}
+  local reforgeLiteIntegration = WSGH.Integrations and WSGH.Integrations.ReforgeLite or nil
+  local hasReforgeLite = reforgeLiteIntegration
+    and reforgeLiteIntegration.IsAvailable
+    and reforgeLiteIntegration.IsAvailable()
+  for _, task in ipairs(rowData.reforgeTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then
+      local label = task.wantReforgeText
+      local want = tonumber(task.wantReforgeId) or 0
+      local have = tonumber(task.haveReforgeId) or 0
+      if not hasReforgeLite then
+        -- Reforge IDs are not useful without ReforgeLite's method data.
+      elseif type(label) == "string" and label ~= "" then
+        reforgeLines[#reforgeLines + 1] = label .. "."
+      elseif want == 0 then
+        reforgeLines[#reforgeLines + 1] = ("Remove current reforge (%d)."):format(have)
+      elseif have == 0 then
+        reforgeLines[#reforgeLines + 1] = ("Apply ReforgeLite reforge %d."):format(want)
+      else
+        reforgeLines[#reforgeLines + 1] = ("Change reforge %d -> %d."):format(have, want)
+      end
+    end
+  end
+  if not hasReforgeLite and rowData.reforgeTasks and #rowData.reforgeTasks > 0 then
+    reforgeLines[#reforgeLines + 1] = "ReforgeLite Classic is recommended for this task."
+  end
+  addCategory("Reforging", reforgeLines)
+
   return added
 end
 
@@ -554,7 +623,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   rowFrame.title:SetText(name or (displayItemId ~= 0 and ("Item " .. displayItemId) or rowData.slotKey))
   rowFrame.icon:SetScript("OnEnter", function(self)
     if rowData.equippedLink then
-      ShowTooltip(self, rowData.equippedLink)
+      ShowEquippedTooltip(self, rowData.slotId, rowData.equippedLink)
       return
     end
     local expected = expectedItemId ~= 0 and expectedItemId or displayItemId
@@ -591,6 +660,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   local hasEnchantWork = false
   local hasTinkerWork = false
   local hasUpgradeWork = false
+  local hasReforgeWork = false
   for _, task in ipairs(rowData.socketTasks or {}) do
     if task.status ~= WSGH.Const.STATUS_OK then
       hasSocketWork = true
@@ -611,16 +681,24 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       hasUpgradeWork = true
     end
   end
+  for _, task in ipairs(rowData.reforgeTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then
+      hasReforgeWork = true
+    end
+  end
   local priority = WSGH.UI and WSGH.UI.GetRowActionPriority and WSGH.UI.GetRowActionPriority(rowData) or nil
   local hasPrioritySocket = priority and priority.hasSocketWork or hasSocketWork
   local hasPriorityAnyEnchant = priority and priority.hasEnchantWork or (hasEnchantWork or hasTinkerWork)
   local hasPriorityUpgrade = priority and priority.hasUpgradeWork or hasUpgradeWork
+  local hasPriorityReforge = priority and priority.hasReforgeWork or hasReforgeWork
   local nextPriorityEnchantTask = priority and priority.nextEnchantTask or nil
 
   if rowData.rowStatus == "WRONG_ITEM" then
     rowFrame.title:SetTextColor(1, 0.25, 0.25)
   elseif hasUpgradeWork then
     rowFrame.title:SetTextColor(1, 0.62, 0.22)
+  elseif hasReforgeWork then
+    rowFrame.title:SetTextColor(0.8, 0.62, 1)
   else
     rowFrame.title:SetTextColor(1, 0.82, 0)
   end
@@ -826,12 +904,11 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
             GameTooltip:AddLine("This may also require a belt buckle for an extra socket.", 1, 0.82, 0.2, true)
           end
           if currentGemCount > 0 then
-            local currentGemText = FormatCurrentGemText(currentGemIds)
-            if currentGemText then
-              if currentGemCount == 1 then
-                GameTooltip:AddLine(("Item currently has gem: %s"):format(currentGemText), 1, 1, 1, true)
-              else
-                GameTooltip:AddLine(("Item currently has gems: %s"):format(currentGemText), 1, 1, 1, true)
+            local currentGemLines = BuildCurrentGemLines(currentGemIds)
+            if currentGemLines then
+              GameTooltip:AddLine("Item currently has gems:", 1, 1, 1, true)
+              for _, currentGemLine in ipairs(currentGemLines) do
+                GameTooltip:AddLine(currentGemLine, 1, 1, 1, true)
               end
             else
               if currentGemCount == 1 then
@@ -874,6 +951,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   rowFrame.action:SetScript("OnClick", function()
     if onAction then onAction(rowData) end
   end)
+  SetActionButtonReforgeStyle(rowFrame.action, false)
 
   if rowData.socketHintText then
     rowFrame.action:SetText("Add socket")
@@ -972,6 +1050,27 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         if maxStep <= 0 then maxStep = math.max(2, targetStep) end
         GameTooltip:SetText(("Upgrade this (%d/%d -> %d/%d)."):format(currentStep, maxStep, targetStep, maxStep))
         GameTooltip:AddLine("Use the Item Upgrader NPC in your faction shrine.", 1, 0.82, 0.2, true)
+        GameTooltip:Show()
+      end)
+      rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
+    elseif hasPriorityReforge and not hasPriorityAnyEnchant and not hasPriorityUpgrade then
+      rowFrame.action:SetEnabled(true)
+      rowFrame.action:SetText("Reforge*")
+      SetActionButtonReforgeStyle(rowFrame.action, true)
+      local firstReforgeTask = rowData.reforgeTasks and rowData.reforgeTasks[1] or nil
+      local reforgeText = firstReforgeTask and firstReforgeTask.wantReforgeText or nil
+      local reforgeLiteIntegration = WSGH.Integrations and WSGH.Integrations.ReforgeLite or nil
+      local hasReforgeLite = reforgeLiteIntegration
+        and reforgeLiteIntegration.IsAvailable
+        and reforgeLiteIntegration.IsAvailable()
+      rowFrame.action:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(reforgeText or "Reforge item.")
+        if hasReforgeLite then
+          GameTooltip:AddLine("Use ReforgeLite to apply the changes.", 1, 0.82, 0.2, true)
+        else
+          GameTooltip:AddLine("Apply reforge manually. ReforgeLite Classic is recommended for this step.", 1, 0.82, 0.2, true)
+        end
         GameTooltip:Show()
       end)
       rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)

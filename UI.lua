@@ -3,6 +3,15 @@ _G.WowSimsGearHelper = WSGH
 WSGH.UI = WSGH.UI or {}
 WSGH.Debug = WSGH.Debug or {}
 
+local function ClearUserPlaced(frame)
+  if not (frame and frame.SetUserPlaced) then return end
+  local isMovable = frame.IsMovable and frame:IsMovable()
+  local isResizable = frame.IsResizable and frame:IsResizable()
+  if isMovable or isResizable then
+    frame:SetUserPlaced(false)
+  end
+end
+
 local function SavePosition(frame)
   local ui = WSGH.DB.profile.ui
   local point, _, relativePoint, x, y = frame:GetPoint(1)
@@ -10,12 +19,30 @@ local function SavePosition(frame)
   ui.relativePoint = relativePoint
   ui.x = x
   ui.y = y
+  ClearUserPlaced(frame)
 end
 
 local function RestorePosition(frame)
   local ui = WSGH.DB.profile.ui
   frame:ClearAllPoints()
   frame:SetPoint(ui.point, UIParent, ui.relativePoint, ui.x, ui.y)
+end
+
+local function ResizeFromTopLeft(frame, resize)
+  if not frame then return end
+  local left = frame:GetLeft()
+  local top = frame:GetTop()
+
+  if resize then resize() end
+
+  if not left or not top then
+    SavePosition(frame)
+    return
+  end
+
+  frame:ClearAllPoints()
+  frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+  SavePosition(frame)
 end
 
 local function IsFrameVisible(frame)
@@ -193,8 +220,12 @@ local function ConfigureReforgeReminderForPlan(plan, source)
   local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
   local hasReforges = PlanHasReforges(plan)
   local shouldShow = false
+  local hasReforgeLite = WSGH.Integrations
+    and WSGH.Integrations.ReforgeLite
+    and WSGH.Integrations.ReforgeLite.IsAvailable
+    and WSGH.Integrations.ReforgeLite.IsAvailable()
 
-  if hasReforges and preferences then
+  if hasReforges and not hasReforgeLite and preferences then
     if source == "manual" then
       shouldShow = preferences.showReforgeReminderAfterImport ~= false
     elseif source == "restore" then
@@ -216,7 +247,7 @@ function WSGH.UI.DismissReforgeReminder()
   RefreshReforgeReminder()
 end
 
-local function ApplyImportedPlan(plan, source)
+local function ApplyImportedPlan(plan, source, rawJson)
   if WSGH.UI.ResetRuntimeState then
     WSGH.UI.ResetRuntimeState()
   end
@@ -233,6 +264,22 @@ local function ApplyImportedPlan(plan, source)
 
   WSGH.State.diff = diff
   ConfigureReforgeReminderForPlan(plan, source)
+  if source == "manual"
+    and rawJson
+    and WSGH.Integrations
+    and WSGH.Integrations.ReforgeLite
+    and WSGH.Integrations.ReforgeLite.SyncImport then
+    local synced, syncErr = WSGH.Integrations.ReforgeLite.SyncImport(rawJson)
+    if synced then
+      WSGH.Util.Print("Synced import to ReforgeLite.")
+      local refreshedDiff = WSGH.Diff.Build(plan, WSGH.Scan.Equipped.GetState())
+      if refreshedDiff then
+        WSGH.State.diff = refreshedDiff
+      end
+    elseif syncErr ~= "missing" and syncErr ~= "disabled" and syncErr ~= "empty" then
+      WSGH.Util.Print("ReforgeLite sync failed: " .. tostring(syncErr))
+    end
+  end
   if WSGH.UI.frame and WSGH.UI.rows then
     WSGH.UI.Render()
   end
@@ -270,6 +317,16 @@ local function HasPendingUpgradeTask(rowData)
   return false
 end
 
+local function HasPendingReforgeTask(rowData)
+  if not rowData then return false end
+  for _, task in ipairs(rowData.reforgeTasks or {}) do
+    if task and task.status ~= WSGH.Const.STATUS_OK then
+      return true
+    end
+  end
+  return false
+end
+
 function WSGH.UI.GetRowActionPriority(rowData)
   local nextSocketTask = FindNextPendingSocketTask(rowData)
   local nextEnchantTask = FindNextPendingEnchantTask(rowData)
@@ -279,6 +336,7 @@ function WSGH.UI.GetRowActionPriority(rowData)
     hasSocketWork = nextSocketTask ~= nil,
     hasEnchantWork = nextEnchantTask ~= nil,
     hasUpgradeWork = HasPendingUpgradeTask(rowData),
+    hasReforgeWork = HasPendingReforgeTask(rowData),
   }
 end
 
@@ -295,6 +353,12 @@ local function DetermineNextAction(rowData)
     return {
       type = priority.nextEnchantTask.type or "APPLY_ENCHANT",
       task = priority.nextEnchantTask,
+    }
+  end
+  if priority.hasReforgeWork and not priority.hasUpgradeWork then
+    return {
+      type = "REFORGE_ITEM",
+      task = rowData.reforgeTasks and rowData.reforgeTasks[1] or nil,
     }
   end
   return nil
@@ -995,9 +1059,24 @@ local function ExecuteSocketHintAction(rowData)
   end
 end
 
+local function ExecuteReforgeAction()
+  ClearActionGuidanceHighlights()
+  CloseSocketFrameIfOpen()
+  CloseEngineeringWindowIfOpen()
+  CloseBlacksmithingWindowIfOpen()
+  CloseEnchantingWindowIfOpen()
+
+  if WSGH.Integrations and WSGH.Integrations.ReforgeLite and WSGH.Integrations.ReforgeLite.OpenOrGuide then
+    WSGH.Integrations.ReforgeLite.OpenOrGuide()
+    return
+  end
+
+  WSGH.Util.Print("Open ReforgeLite and apply the WowSims reforge plan manually.")
+end
+
 local function NextActionRequiresDirectClick(action)
   if not action then return false end
-  return action.type == "SOCKET_GEM" or action.type == "APPLY_TINKER" or IsSelfEnchantingRingTask(action.task)
+  return action.type == "SOCKET_GEM" or action.type == "APPLY_TINKER" or action.type == "REFORGE_ITEM" or IsSelfEnchantingRingTask(action.task)
 end
 
 local function PrimeGuidanceForAction(action)
@@ -1037,6 +1116,10 @@ local function PrimeGuidanceForAction(action)
       WSGH.Util.Print("Next step requires another click to open Enchanting for the ring enchant.")
     end
   end
+
+  if action.type == "REFORGE_ITEM" then
+    WSGH.Util.Print("Next step requires another click to open ReforgeLite for reforging.")
+  end
 end
 
 local function ExecuteAction(action, rowData)
@@ -1056,6 +1139,9 @@ local function ExecuteAction(action, rowData)
     end
     Guide.currentAction = action
     ExecuteEnchantAction(action)
+  elseif action.type == "REFORGE_ITEM" then
+    Guide.currentAction = action
+    ExecuteReforgeAction()
   end
 end
 
@@ -1114,6 +1200,8 @@ function Guide.OnStateUpdated()
         WSGH.UI.Highlight.UpdateFromState()
       end
     end
+  elseif action.type == "REFORGE_ITEM" then
+    Guide.currentAction = nil
   end
 end
 
@@ -1155,13 +1243,21 @@ end
 
 local function LayoutRows()
   if not WSGH.UI.frame or not WSGH.UI.rows then return end
+  if WSGH.UI.minimizedForReforge then
+    for _, row in ipairs(WSGH.UI.rows) do
+      row:Hide()
+    end
+    return
+  end
 
   local frame = WSGH.UI.frame
   local rowHeight = WSGH.UI.rowHeight
+  local rowFrameHeight = WSGH.UI.rowFrameHeight or WSGH.Const.UI.rowHeight
   local listTop = WSGH.UI.listTop
+  local listBottomPadding = WSGH.UI.listBottomPadding or WSGH.Const.UI.listBottomPadding or 18
   local rowRightPad = WSGH.UI.rowRightPad or 18
-  local availableHeight = frame:GetHeight() - math.abs(listTop) - 18
-  local desired = math.max(1, math.floor(availableHeight / rowHeight))
+  local availableHeight = frame:GetHeight() - math.abs(listTop) - rowFrameHeight - listBottomPadding
+  local desired = math.max(1, math.floor(availableHeight / rowHeight) + 1)
   desired = math.min(desired, #WSGH.Const.SLOT_ORDER)
 
   if desired > #WSGH.UI.rows then
@@ -1184,6 +1280,86 @@ local function LayoutRows()
   end
 
   WSGH.UI.visibleRows = desired
+end
+
+local function GetMainFrameHeightForRows(rowCount)
+  rowCount = math.max(1, math.min(tonumber(rowCount) or 1, #WSGH.Const.SLOT_ORDER))
+  local rowStep = WSGH.UI.rowHeight or ((WSGH.Const.UI.rowHeight or 34) + (WSGH.Const.UI.rowGap or 0))
+  local rowFrameHeight = WSGH.UI.rowFrameHeight or WSGH.Const.UI.rowHeight or 34
+  local listTop = WSGH.UI.listTop or WSGH.Const.UI.listTop or -96
+  local listBottomPadding = WSGH.UI.listBottomPadding or WSGH.Const.UI.listBottomPadding or 18
+
+  return math.abs(listTop) + ((rowCount - 1) * rowStep) + rowFrameHeight + listBottomPadding
+end
+
+local function SnapMainFrameHeightToVisibleRows()
+  if not WSGH.UI.frame then return end
+  local targetHeight = GetMainFrameHeightForRows(WSGH.UI.visibleRows or 1)
+  if WSGH.UI.maxHeight then
+    targetHeight = math.min(targetHeight, WSGH.UI.maxHeight)
+  end
+  ResizeFromTopLeft(WSGH.UI.frame, function()
+    WSGH.UI.frame:SetHeight(targetHeight)
+  end)
+end
+
+local function SetMainBodyShown(shown)
+  for _, frame in ipairs(WSGH.UI.mainBodyFrames or {}) do
+    if shown then frame:Show() else frame:Hide() end
+  end
+  for _, row in ipairs(WSGH.UI.rows or {}) do
+    if shown then row:Show() else row:Hide() end
+  end
+end
+
+local function UpdateMinimizedToggleButton()
+  local button = WSGH.UI.expandAfterReforgeBtn
+  if not button then return end
+  if WSGH.UI.minimizedForReforge then
+    button:SetNormalTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Up")
+    button:SetPushedTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Down")
+    button:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
+  else
+    button:SetNormalTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Up")
+    button:SetPushedTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Down")
+    button:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
+  end
+end
+
+function WSGH.UI.SetMinimizedForReforge(minimized)
+  if not WSGH.UI.frame then return end
+
+  if minimized then
+    if WSGH.UI.minimizedForReforge then return end
+    WSGH.UI.minimizedForReforge = true
+    WSGH.UI.heightBeforeReforgeMinimize = WSGH.UI.frame:GetHeight()
+    SetMainBodyShown(false)
+    SetAuxiliaryFramesShown(false)
+    ResizeFromTopLeft(WSGH.UI.frame, function()
+      WSGH.UI.frame:SetHeight(WSGH.Const.UI.minimizedHeight)
+    end)
+    WSGH.UI.frame:SetResizable(false)
+    if WSGH.UI.resizer then WSGH.UI.resizer:Hide() end
+    UpdateMinimizedToggleButton()
+    if WSGH.UI.Highlight and WSGH.UI.Highlight.ClearAll then
+      WSGH.UI.Highlight.ClearAll()
+    end
+    return
+  end
+
+  if not WSGH.UI.minimizedForReforge then return end
+  WSGH.UI.minimizedForReforge = false
+  SetMainBodyShown(true)
+  ResizeFromTopLeft(WSGH.UI.frame, function()
+    WSGH.UI.frame:SetHeight(WSGH.UI.heightBeforeReforgeMinimize or WSGH.UI.maxHeight or WSGH.Const.UI.height)
+  end)
+  WSGH.UI.heightBeforeReforgeMinimize = nil
+  WSGH.UI.frame:SetResizable(true)
+  if WSGH.UI.resizer then WSGH.UI.resizer:Show() end
+  UpdateMinimizedToggleButton()
+  LayoutRows()
+  SetAuxiliaryFramesShown(true)
+  WSGH.UI.Render()
 end
 
 local function UpdateShoppingList()
@@ -1277,8 +1453,10 @@ end
 
 function WSGH.UI.RebuildAndRefresh()
   BuildDiffAndRender()
-  WSGH.UI.Highlight.UpdateFromState()
-  WSGH.UI.Highlight.Refresh()
+  if WSGH.UI.frame and WSGH.UI.frame:IsShown() then
+    WSGH.UI.Highlight.UpdateFromState()
+    WSGH.UI.Highlight.Refresh()
+  end
 end
 BuildPlanFromEquipped = function()
   local equipped = WSGH.Scan.Equipped.GetState()
@@ -1333,7 +1511,7 @@ function TryLoadSavedImport()
     return
   end
 
-  local ok, derr = WSGH.UI.ApplyImportedPlan(plan, "restore")
+  local ok, derr = WSGH.UI.ApplyImportedPlan(plan, "restore", savedText)
   if not ok then
     WSGH.Util.Print("Saved import diff failed: " .. tostring(derr))
   end
@@ -1392,6 +1570,15 @@ local function OnEventDispatch(_, event, ...)
       if WSGH.UI.Highlight.Refresh then WSGH.UI.Highlight.Refresh() end
       if Guide.OnStateUpdated then Guide.OnStateUpdated() end
     end
+  elseif event == "FORGE_MASTER_OPENED" or event == "FORGE_MASTER_ITEM_CHANGED" or event == "FORGE_MASTER_CLOSED" then
+    if WSGH.State.plan then
+      BuildDiffAndRender()
+      if uiVisible then
+        WSGH.UI.Highlight.UpdateFromState()
+        WSGH.UI.Highlight.Refresh()
+        if Guide.OnStateUpdated then Guide.OnStateUpdated() end
+      end
+    end
   end
 end
 
@@ -1403,6 +1590,9 @@ RegisterUIEvents = function()
   WSGH.UI.eventFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
   WSGH.UI.eventFrame:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
   WSGH.UI.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+  WSGH.UI.eventFrame:RegisterEvent("FORGE_MASTER_OPENED")
+  WSGH.UI.eventFrame:RegisterEvent("FORGE_MASTER_ITEM_CHANGED")
+  WSGH.UI.eventFrame:RegisterEvent("FORGE_MASTER_CLOSED")
   WSGH.UI.eventFrame:SetScript("OnEvent", OnEventDispatch)
 end
 
@@ -1532,6 +1722,10 @@ local function OnRowAction(rowData)
     ))
     return
   end
+  if priority.hasReforgeWork and not priority.hasSocketWork and not priority.hasEnchantWork and not priority.hasUpgradeWork then
+    ExecuteReforgeAction()
+    return
+  end
   Guide.StartForRow(rowData)
 end
 
@@ -1556,10 +1750,12 @@ function WSGH.UI.Init()
   TryLoadSavedImport()
 
   local sidebarWidth = WSGH.Const.UI.shopping.sidebarWidth
-  local rowHeight = WSGH.Const.UI.rowHeight + 6
+  local rowFrameHeight = WSGH.Const.UI.rowHeight
+  local rowHeight = rowFrameHeight + (WSGH.Const.UI.rowGap or 0)
   local listTop = WSGH.Const.UI.listTop
+  local listBottomPadding = WSGH.Const.UI.listBottomPadding or 18
   local rowRightPad = WSGH.Const.UI.rowRightPad
-  local maxHeight = math.abs(listTop) + 18 + (#WSGH.Const.SLOT_ORDER * rowHeight) + 24
+  local maxHeight = math.abs(listTop) + ((#WSGH.Const.SLOT_ORDER - 1) * rowHeight) + rowFrameHeight + listBottomPadding
   local frameWidth = WSGH.Const.UI.width
 
   local mainFrame = CreateFrame("Frame", "WowSimsGearHelperFrame", UIParent, "BackdropTemplate")
@@ -1568,6 +1764,7 @@ function WSGH.UI.Init()
   mainFrame:SetFrameStrata("DIALOG")
   mainFrame:SetToplevel(true)
   mainFrame:SetMovable(true)
+  ClearUserPlaced(mainFrame)
   mainFrame:EnableMouse(true)
   mainFrame:RegisterForDrag("LeftButton")
   mainFrame:SetScript("OnDragStart", function(self) self:StartMoving() end)
@@ -1592,6 +1789,8 @@ function WSGH.UI.Init()
   end
 
   RestorePosition(mainFrame)
+  mainFrame:SetHeight(maxHeight)
+  ClearUserPlaced(mainFrame)
 
   local title = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", 18, -16)
@@ -1604,7 +1803,6 @@ function WSGH.UI.Init()
 
   local helpBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
   helpBtn:SetSize(WSGH.Const.UI.help.iconButton.width, WSGH.Const.UI.help.iconButton.height)
-  helpBtn:SetPoint("LEFT", versionLabel, "RIGHT", 8, 0)
   helpBtn:SetText("?")
   helpBtn:SetScript("OnClick", function()
     if WSGH.UI.Help and WSGH.UI.Help.Show then
@@ -1615,8 +1813,17 @@ function WSGH.UI.Init()
     WSGH.UI.Help.SetHelpTooltip(helpBtn)
   end
 
+  local monkColor = RAID_CLASS_COLORS and RAID_CLASS_COLORS.MONK
+  local monkColorCode = monkColor and monkColor.colorStr or "ff00ff98"
+  local attribution = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  attribution:SetPoint("LEFT", versionLabel, "RIGHT", 8, 0)
+  attribution:SetText(("by |c%sBlazzmonk|r - Garalon EU"):format(monkColorCode))
+  attribution:SetTextColor(1, 1, 1, 1)
+
+  local headerButtons = WSGH.Const.UI.headerButtons
   local close = CreateFrame("Button", nil, mainFrame, "UIPanelCloseButton")
-  close:SetPoint("TOPRIGHT", -5, -5)
+  close:SetSize(WSGH.Const.UI.minimizedRestoreButton.width, WSGH.Const.UI.minimizedRestoreButton.height)
+  close:SetPoint("TOPRIGHT", headerButtons.closeOffset.x, headerButtons.closeOffset.y)
 
   local importBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
   importBtn:SetSize(90, 22)
@@ -1639,6 +1846,40 @@ function WSGH.UI.Init()
   local summary = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   summary:SetPoint("LEFT", settingsBtn, "RIGHT", 10, 0)
   summary:SetText("No plan imported")
+
+  local expandAfterReforgeBtn = CreateFrame("Button", nil, mainFrame)
+  expandAfterReforgeBtn:SetSize(
+    WSGH.Const.UI.minimizedRestoreButton.width,
+    WSGH.Const.UI.minimizedRestoreButton.height
+  )
+  expandAfterReforgeBtn:SetPoint("RIGHT", close, "LEFT", -headerButtons.collapseGap, 0)
+  expandAfterReforgeBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Up")
+  expandAfterReforgeBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Down")
+  expandAfterReforgeBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight", "ADD")
+  local function RefreshMinimizedToggleTooltip(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if WSGH.UI.minimizedForReforge then
+      GameTooltip:SetText("Expand WSGH", 1, 1, 1)
+      GameTooltip:AddLine("Show the full WowSims Gear Helper window.", nil, nil, nil, true)
+    else
+      GameTooltip:SetText("Collapse WSGH", 1, 1, 1)
+      GameTooltip:AddLine("Keep only the header visible.", nil, nil, nil, true)
+    end
+    GameTooltip:Show()
+  end
+  expandAfterReforgeBtn:SetScript("OnClick", function(self)
+    if WSGH.UI.SetMinimizedForReforge then
+      WSGH.UI.SetMinimizedForReforge(not WSGH.UI.minimizedForReforge)
+    end
+    if self:IsMouseOver() then
+      RefreshMinimizedToggleTooltip(self)
+    end
+  end)
+  expandAfterReforgeBtn:SetScript("OnEnter", function(self)
+    RefreshMinimizedToggleTooltip(self)
+  end)
+  expandAfterReforgeBtn:SetScript("OnLeave", GameTooltip_Hide)
+  helpBtn:SetPoint("RIGHT", expandAfterReforgeBtn, "LEFT", -headerButtons.helpGap, 0)
 
   local listLabel = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   listLabel:SetPoint("TOPLEFT", 18, -78)
@@ -1664,7 +1905,7 @@ function WSGH.UI.Init()
 
   local scroll = CreateFrame("ScrollFrame", "WowSimsGearHelperScroll", mainFrame, "FauxScrollFrameTemplate")
   scroll:SetPoint("TOPLEFT", 18, listTop)
-  scroll:SetPoint("BOTTOMRIGHT", -rowRightPad, 18)
+  scroll:SetPoint("BOTTOMRIGHT", -rowRightPad, listBottomPadding)
   scroll:EnableMouseWheel(true)
   scroll:SetScript("OnMouseWheel", function(self, delta)
     EnsureUIState()
@@ -1783,8 +2024,8 @@ function WSGH.UI.Init()
   local function ShowReforgeReminderTooltip(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:SetText("Did you reforge?", 1, 0.82, 0)
-    GameTooltip:AddLine("This import includes reforges, but the addon does not handle them.", 1, 1, 1, true)
-    GameTooltip:AddLine("Use ReforgeLite Classic separately, then verify your final stats still match WowSims.", 1, 1, 1, true)
+    GameTooltip:AddLine("This import includes reforges. WSGH can sync them to ReforgeLite Classic when it is available.", 1, 1, 1, true)
+    GameTooltip:AddLine("Use ReforgeLite to apply them, you can reopen WSGH to confirm you're done afterwards.", 1, 1, 1, true)
     GameTooltip:Show()
   end
 
@@ -1884,7 +2125,8 @@ function WSGH.UI.Init()
   resizer:SetScript("OnMouseUp", function(self)
     local parentFrame = self:GetParent()
     parentFrame:StopMovingOrSizing()
-    SavePosition(parentFrame)
+    LayoutRows()
+    SnapMainFrameHeightToVisibleRows()
     LayoutRows()
     WSGH.UI.Render()
   end)
@@ -1896,15 +2138,20 @@ function WSGH.UI.Init()
 
   WSGH.UI.frame = mainFrame
   WSGH.UI.title = title
+  WSGH.UI.attribution = attribution
   WSGH.UI.summary = summary
+  WSGH.UI.expandAfterReforgeBtn = expandAfterReforgeBtn
   WSGH.UI.scroll = scroll
   WSGH.UI.rows = rows
   WSGH.UI.rowHeight = rowHeight
+  WSGH.UI.rowFrameHeight = rowFrameHeight
   WSGH.UI.visibleRows = 1
   WSGH.UI.listTop = listTop
+  WSGH.UI.listBottomPadding = listBottomPadding
   WSGH.UI.rowRightPad = rowRightPad
   WSGH.UI.listWarningChip = listWarningChip
   WSGH.UI.listWarningText = listWarningText
+  WSGH.UI.mainBodyFrames = { listLabel, listWarningChip, scroll }
   WSGH.UI.shoppingFrame = sidebar
   WSGH.UI.shoppingTitle = sidebarTitle
   WSGH.UI.shoppingByline = shoppingByline
@@ -1913,6 +2160,7 @@ function WSGH.UI.Init()
   WSGH.UI.shoppingEmpty = shoppingEmpty
   WSGH.UI.shoppingReminder = shoppingReminder
   WSGH.UI.shoppingReminderLabel = shoppingReminderLabel
+  WSGH.UI.resizer = resizer
   WSGH.UI.maxHeight = maxHeight
   WSGH.UI.RefreshWindowBackgrounds()
   WSGH.UI.eventFrame = CreateFrame("Frame")
@@ -1936,6 +2184,9 @@ function WSGH.UI.Render()
     if WSGH.UI.summary then
       WSGH.UI.summary:SetText(WSGH.State.plan and "Imported, no diff yet" or "No plan imported")
     end
+    if WSGH.UI.minimizedForReforge then
+      return
+    end
     if WSGH.UI.listWarningChip then
       WSGH.UI.listWarningChip:Hide()
       WSGH.UI.listWarningChip:SetScript("OnEnter", nil)
@@ -1949,6 +2200,9 @@ function WSGH.UI.Render()
   end
 
   WSGH.UI.summary:SetText(("Tasks: %d"):format(diff.taskCount or 0))
+  if WSGH.UI.minimizedForReforge then
+    return
+  end
   if WSGH.UI.listWarningChip then
     local warningSlots = {}
     local hasGemWarning = false
@@ -2035,8 +2289,10 @@ function WSGH.UI.Render()
   end
 end
 
-  WSGH.UI.Highlight.UpdateFromState()
-  WSGH.UI.Highlight.Refresh()
+  if WSGH.UI.frame and WSGH.UI.frame:IsShown() then
+    WSGH.UI.Highlight.UpdateFromState()
+    WSGH.UI.Highlight.Refresh()
+  end
   UpdateShoppingList()
 end
 
@@ -2054,6 +2310,9 @@ function WSGH.UI.Show()
     -- Always rebuild diff on show to ensure state matches current equipment/sockets.
     BuildDiffAndRender()
   end
+  if WSGH.UI.minimizedForReforge then
+    WSGH.UI.SetMinimizedForReforge(false)
+  end
   RegisterUIEvents()
   SetRuntimePollingEnabled(true)
   if WSGH.UI.Shopping and WSGH.UI.Shopping.EnableRuntimeListeners then
@@ -2070,6 +2329,9 @@ end
 
 function WSGH.UI.Hide()
   if not WSGH.UI.frame then return end
+  if WSGH.UI.minimizedForReforge then
+    WSGH.UI.SetMinimizedForReforge(false)
+  end
   WSGH.UI.frame:Hide()
   CleanupAfterHide()
 end

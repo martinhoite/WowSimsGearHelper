@@ -209,7 +209,15 @@ WSGH.Const.MAX_SOCKETS_RENDER = 3
 WSGH.Const.UI = {
   width = 520,
   height = 420,
+  minimizedHeight = 84,
+  minimizedRestoreButton = { width = 28, height = 28 },
+  headerButtons = {
+    closeOffset = { x = -5, y = -5 },
+    collapseGap = 2,
+    helpGap = 4,
+  },
   rowHeight = 34,
+  rowGap = 6,
   socketSize = 16,
   socketGap = 4,
   warningIconSize = 16,
@@ -218,6 +226,7 @@ WSGH.Const.UI = {
   rowStatusBadgeOffset = { x = 0, y = -3 },
   padding = 12,
   listTop = -96,
+  listBottomPadding = 18,
   rowRightPad = 24,
   shopping = {
     sidebarWidth = 260,

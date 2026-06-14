@@ -3,7 +3,7 @@ local WSGH = _G.WowSimsGearHelper or {}
 _G.WowSimsGearHelper = WSGH
 
 WSGH.ADDON_NAME = ADDON_NAME
-WSGH.VERSION = "1.1.0"
+WSGH.VERSION = "1.2.0"
 
 local function EnsureDB()
   if type(_G.WowSimsGearHelperDB) ~= "table" then
@@ -30,6 +30,9 @@ local function EnsureDB()
       savedImportText = nil,
       showReforgeReminderAfterImport = true,
       showReforgeReminderOnRestore = false,
+      syncImportsToReforgeLite = true,
+      minimizeWindowAtReforgeNpc = true,
+      restoreWindowAfterReforgeNpc = false,
       useOpaqueBackgroundForAllWindows = false,
       tinkers = {},
       upgradeCurrency = "JUSTICE",
@@ -41,6 +44,9 @@ local function EnsureDB()
   if prefs.savedImportText == nil then prefs.savedImportText = nil end
   if prefs.showReforgeReminderAfterImport == nil then prefs.showReforgeReminderAfterImport = true end
   if prefs.showReforgeReminderOnRestore == nil then prefs.showReforgeReminderOnRestore = false end
+  if prefs.syncImportsToReforgeLite == nil then prefs.syncImportsToReforgeLite = true end
+  if prefs.minimizeWindowAtReforgeNpc == nil then prefs.minimizeWindowAtReforgeNpc = true end
+  if prefs.restoreWindowAfterReforgeNpc == nil then prefs.restoreWindowAfterReforgeNpc = false end
   if prefs.useOpaqueBackgroundForAllWindows == nil then prefs.useOpaqueBackgroundForAllWindows = false end
   if prefs.tinkers == nil then prefs.tinkers = {} end
   if prefs.minimap == nil then prefs.minimap = { hide = false } end
@@ -180,6 +186,9 @@ events:SetScript("OnEvent", function(_, event, name)
     end
     if WSGH.UI and WSGH.UI.Minimap and WSGH.UI.Minimap.Initialize then
       WSGH.UI.Minimap.Initialize()
+    end
+    if WSGH.Integrations and WSGH.Integrations.ReforgeLite and WSGH.Integrations.ReforgeLite.Initialize then
+      WSGH.Integrations.ReforgeLite.Initialize()
     end
 
     SLASH_WOWSIMSGEARHELPER1 = "/wsgh"
