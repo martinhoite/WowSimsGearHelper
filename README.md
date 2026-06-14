@@ -2,7 +2,7 @@ WowSims Gear Helper
 <!-- ![Alpha](https://img.shields.io/badge/alpha-0.1.2--alpha.2-blue) -->
 ![Alpha](https://img.shields.io/badge/alpha-none-lightgrey)
 ![Beta](https://img.shields.io/badge/beta-none-lightgrey)
-![Release](https://img.shields.io/badge/release-1.1.0-success)
+![Release](https://img.shields.io/badge/release-1.2.0-success)
 ===================
 
 <img src="WowSimsGearHelper_icon.png" alt="WowSims Gear Helper icon" width="128">
@@ -15,6 +15,7 @@ Features
 - Import WowSims exports and build a gear plan.
 - Highlight sockets, enchants, upgrades, and shopping needs.
 - Support for extra sockets and tinkers.
+- Optional ReforgeLite Classic import sync for WowSims reforges.
 - Bag/character slot highlighting to guide actions.
 - Live shopping list updates as items are bought / obtained from mailbox.
 - Built-in quick help plus a more detailed import walkthrough.
@@ -44,9 +45,9 @@ Installation
 Usage
 -----
 1) Open the addon with `/wsgh`.
-2) Click Import and paste your WowSims export JSON.
+2) Click Import and paste your WowSims ReforgeLite export, or the `Export -> JSON` output.
 3) Use the `?` or `Help` buttons if you need a quick walkthrough.
-4) Follow the guided steps for sockets, enchants, items, and any separate reforging work.
+4) Follow the guided steps for sockets, enchants, items, upgrades, and ReforgeLite-backed reforging.
 
 Report Bugs / Request Features
 ------------------------------
@@ -58,7 +59,7 @@ Please use GitHub Issues and include as much context as possible.
 Limitations
 -----------
 - At this time I only support the English client and language. If Blizzard decides to continue into Warlords of Draenor, I'll likely extend with additional locale support.
-- Reforging is not handled. Use ReforgeLite Classic: <https://www.curseforge.com/wow/addons/reforgelite-classic>, an integration is planned to work with ReforgeLite from WSGH directly.
+- Reforging is handled by syncing to ReforgeLite Classic when it is installed and enabled; WSGH only guides and confirms from item links.
 - The addon follows the data you import and attempts to flag issues, but you should still verify the result yourself.
 
 Attribution

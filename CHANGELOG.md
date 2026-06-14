@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.0] - 15 Jun, 2026
+
+### Added
+- Added optional ReforgeLite Classic sync for successful manual WowSims imports.
+- Added reforge diff tasks that confirm current reforges from equipped item links.
+- Added Reforge row actions after sockets, enchants, and upgrades, handing reforges off to ReforgeLite instead of applying them directly.
+- Added ReforgeLite-backed reforge labels such as `281 Mastery > Crit` when ReforgeLite method data is available.
+- Added Reforge details to row badges and action tooltips, including ReforgeLite and manual fallback guidance.
+- Added Reforge NPC window behavior settings, including default WSGH minimization and optional restore after the NPC closes.
+- Added a compact header collapse/expand control for keeping WSGH out of the way during reforging.
+- Added WowSims ReforgeLite export guidance while keeping `Export -> JSON` as a supported import path.
+- Added manual reforge reminders as a fallback only when ReforgeLite Classic is not available.
+
+### Changed
+- Main window resizing now snaps to full row heights with consistent bottom padding.
+
+### Fixed
+- Row item tooltips now use the live equipped inventory item so item level and upgrade state match the character panel.
+- Import warning tooltips now show existing gems as item-colored, socket-numbered lines.
+
 ## [1.1.0] - 13 Jun, 2026
 
 ### Added

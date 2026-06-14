@@ -3,7 +3,7 @@ local WSGH = _G.WowSimsGearHelper or {}
 _G.WowSimsGearHelper = WSGH
 
 WSGH.ADDON_NAME = ADDON_NAME
-WSGH.VERSION = "1.1.0"
+WSGH.VERSION = "1.2.0"
 
 local function EnsureDB()
   if type(_G.WowSimsGearHelperDB) ~= "table" then
