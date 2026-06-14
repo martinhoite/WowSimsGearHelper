@@ -4,7 +4,7 @@
 ## IconTexture: Interface\AddOns\WowSimsGearHelper\WowSimsGearHelper_icon.tga
 ## Author: Blazz
 ## Version: 1.1.0
-## OptionalDeps: Masque
+## OptionalDeps: Masque, ReforgeLite
 ## SavedVariablesPerCharacter: WowSimsGearHelperDB
 
 Libs/LibStub/LibStub.lua
@@ -29,6 +29,7 @@ Diff.lua
 Core.lua
 
 Integrations/BagAdapters.lua
+Integrations/ReforgeLite.lua
 
 UI/Rows.lua
 UI/SocketHooks.lua

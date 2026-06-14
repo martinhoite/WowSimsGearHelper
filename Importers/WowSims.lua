@@ -100,6 +100,18 @@ local function NormalizeUpgradeStep(rawUpgradeStep)
   return trailingNumber
 end
 
+local function NormalizeReforgeId(rawReforgeId)
+  if WSGH.Integrations and WSGH.Integrations.ReforgeLite and WSGH.Integrations.ReforgeLite.NormalizeReforgeId then
+    return WSGH.Integrations.ReforgeLite.NormalizeReforgeId(rawReforgeId)
+  end
+
+  rawReforgeId = tonumber(rawReforgeId) or 0
+  if rawReforgeId == 0 then return 0 end
+  local normalized = rawReforgeId - 112
+  if normalized <= 0 then return 0 end
+  return normalized
+end
+
 local function BuildSupportedApiVersionText()
   local count = #SUPPORTED_API_VERSION_LIST
   if count == 0 then
@@ -176,9 +188,11 @@ function WowSimsImporter.FromDecoded(decoded)
     local importHasEnchantField = e.enchant ~= nil
     local importHasGemsField = e.gems ~= nil
     local importHasUpgradeField = e.upgradeStep ~= nil
+    local importHasReforgeField = e.reforging ~= nil
     local expectedGemsByIndex, expectedGemSocketCount = NormalizeGemsByIndex(e.gems)
 
     local expectedEnchantId, enchantUnsupported = NormalizeEnchantId(e.enchant)
+    local expectedReforgeId = NormalizeReforgeId(e.reforging)
     plan.slots[slotMeta.slotId] = {
       slotKey = slotMeta.key,
       slotId = slotMeta.slotId,
@@ -190,17 +204,19 @@ function WowSimsImporter.FromDecoded(decoded)
       importHasGemsField = importHasGemsField,
       importHasEnchantField = importHasEnchantField,
       importHasUpgradeField = importHasUpgradeField,
+      importHasReforgeField = importHasReforgeField,
 
       -- Stored for later features, unused in v1 UI:
       expectedEnchantId = expectedEnchantId,
       expectedEnchantUnsupported = enchantUnsupported,
-      expectedReforgeId = tonumber(e.reforging) or 0,
+      expectedRawReforgeId = tonumber(e.reforging) or 0,
+      expectedReforgeId = expectedReforgeId,
       upgradeStep = e.upgradeStep,
       expectedUpgradeStep = NormalizeUpgradeStep(e.upgradeStep),
       randomSuffix = tonumber(e.randomSuffix) or 0,
       tinkerId = NormalizeTinkerId(e.tinker)
     }
-    if (tonumber(e.reforging) or 0) ~= 0 then
+    if expectedReforgeId ~= 0 then
       plan.meta.hasReforges = true
     end
   end
