@@ -328,10 +328,27 @@ local function EnsureOverlayGlowProxy(parent)
 
   local proxy = CreateFrame("Frame", nil, parent)
   proxy:SetFrameLevel((parent:GetFrameLevel() or 0) + 6)
-  proxy:SetAllPoints(parent)
   proxy:EnableMouse(false)
+  proxy:Hide()
   parent.WSGHOverlayGlowProxy = proxy
   return proxy
+end
+
+local function ResyncOverlayGlowProxy(parent, proxy)
+  if not (parent and proxy and parent.GetSize) then return false end
+  local width, height = parent:GetSize()
+  width = tonumber(width) or 0
+  height = tonumber(height) or 0
+  if width <= 0 or height <= 0 then
+    return false
+  end
+
+  proxy:ClearAllPoints()
+  proxy:SetSize(width, height)
+  proxy:SetPoint("CENTER", parent, "CENTER", 0, 0)
+  proxy:SetFrameLevel((parent:GetFrameLevel() or 0) + 6)
+  proxy:Show()
+  return true
 end
 
 local function BuildGlowColor()
@@ -356,13 +373,30 @@ local function StartAutoCastStyle(proxy, style)
   return true
 end
 
-local function ApplyHighlightStyle(parent, context)
+local function ApplyHighlightStyle(parent, context, attemptsLeft)
   if not parent then return end
   if context ~= "bag" and context ~= "slot" then return end
+  attemptsLeft = tonumber(attemptsLeft)
+  if attemptsLeft == nil then attemptsLeft = 2 end
   local style = GetHighlightStyle()
+
+  local proxy = nil
+  if style == "glow" or style == "autocast" or style == "autocast_strong" then
+    proxy = EnsureOverlayGlowProxy(parent)
+    if not ResyncOverlayGlowProxy(parent, proxy) then
+      if attemptsLeft > 0 and C_Timer and C_Timer.After then
+        C_Timer.After(0.05, function()
+          if parent and parent.WSGHIndicator and parent.WSGHIndicator:IsShown() then
+            ApplyHighlightStyle(parent, context, attemptsLeft - 1)
+          end
+        end)
+      end
+      return
+    end
+  end
+
   if style == "glow" then
     if LibCustomGlow and LibCustomGlow.ButtonGlow_Start then
-      local proxy = EnsureOverlayGlowProxy(parent)
       if proxy then
         LibCustomGlow.ButtonGlow_Start(proxy)
         return
@@ -373,7 +407,6 @@ local function ApplyHighlightStyle(parent, context)
       ActionButton_ShowOverlayGlow(parent)
     end
   elseif style == "autocast" or style == "autocast_strong" then
-    local proxy = EnsureOverlayGlowProxy(parent)
     if StartAutoCastStyle(proxy, style) then
       return
     end
@@ -396,9 +429,11 @@ local function ClearHighlightStyle(parent)
   if ActionButton_HideOverlayGlow then
     if proxy then
       ActionButton_HideOverlayGlow(proxy)
-    else
-      ActionButton_HideOverlayGlow(parent)
     end
+    ActionButton_HideOverlayGlow(parent)
+  end
+  if proxy then
+    proxy:Hide()
   end
 end
 

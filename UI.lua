@@ -444,6 +444,11 @@ local function IsBlacksmithingWindowOpen()
   return IsProfessionWindowOpen(definition)
 end
 
+local function IsEnchantingWindowOpen()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENCHANTING or {}
+  return IsProfessionWindowOpen(definition)
+end
+
 local function OpenProfession(professionDefinition, allowProtectedCast)
   if IsProfessionWindowOpen(professionDefinition) then
     return true
@@ -472,6 +477,11 @@ end
 
 local function OpenBlacksmithingProfession(allowProtectedCast)
   local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.BLACKSMITHING or {}
+  return OpenProfession(definition, allowProtectedCast)
+end
+
+local function OpenEnchantingProfession(allowProtectedCast)
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENCHANTING or {}
   return OpenProfession(definition, allowProtectedCast)
 end
 
@@ -528,6 +538,11 @@ local function CloseBlacksmithingWindowIfOpen()
   CloseProfessionWindowIfOpen(definition)
 end
 
+local function CloseEnchantingWindowIfOpen()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENCHANTING or {}
+  CloseProfessionWindowIfOpen(definition)
+end
+
 local function BuildRecipeNameMatchers(recipeNames)
   if type(recipeNames) == "string" then
     recipeNames = { recipeNames }
@@ -552,12 +567,42 @@ local function RecipeNameMatches(matchers, recipeName)
   if not matchers or type(recipeName) ~= "string" or recipeName == "" then return false end
   if matchers.exact[recipeName] then return true end
   local normalized = WSGH.Util.NormalizeName(recipeName, true)
-  return normalized ~= "" and matchers.normalized[normalized] == true
+  if normalized == "" then return false end
+  if matchers.normalized[normalized] == true then return true end
+  for target in pairs(matchers.normalized) do
+    if normalized:sub(1, #target) == target then
+      local suffixText = normalized:sub(#target + 1)
+      local suffix = WSGH.Util.Trim(suffixText)
+      if suffixText:sub(1, 1) == " " and suffix:match("^%d+$") then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function FormatRecipeNamesForMessage(recipeNames)
+  if type(recipeNames) == "string" then
+    return recipeNames
+  end
+  if type(recipeNames) ~= "table" then
+    return "requested recipe"
+  end
+  local names = {}
+  for _, recipeName in ipairs(recipeNames) do
+    if type(recipeName) == "string" and recipeName ~= "" then
+      names[#names + 1] = recipeName
+    end
+  end
+  if #names == 0 then
+    return "requested recipe"
+  end
+  return table.concat(names, " / ")
 end
 
 local function TrySelectRecipeByNames(recipeNames)
   local matchers = BuildRecipeNameMatchers(recipeNames)
-  if not matchers then return false end
+  if not matchers then return false, false, false end
 
   local hasLegacyTradeSkillApi =
     type(GetNumTradeSkills) == "function" and
@@ -578,6 +623,7 @@ local function TrySelectRecipeByNames(recipeNames)
     end
 
     local num = tonumber(GetNumTradeSkills()) or 0
+    local recipeCount = 0
     if type(ExpandTradeSkillSubClass) == "function" then
       for i = 1, num do
         local _, skillType, _, isExpanded = GetTradeSkillInfo(i)
@@ -590,9 +636,12 @@ local function TrySelectRecipeByNames(recipeNames)
     local candidateIndex = nil
     for i = 1, num do
       local name, skillType = GetTradeSkillInfo(i)
-      if skillType ~= "header" and RecipeNameMatches(matchers, name) then
-        candidateIndex = i
-        break
+      if skillType ~= "header" then
+        recipeCount = recipeCount + 1
+        if RecipeNameMatches(matchers, name) then
+          candidateIndex = i
+          break
+        end
       end
     end
 
@@ -615,35 +664,40 @@ local function TrySelectRecipeByNames(recipeNames)
       if type(GetTradeSkillSelectionIndex) == "function" then
         local selected = tonumber(GetTradeSkillSelectionIndex()) or 0
         if selected == candidateIndex then
-          return true
+          return true, true, true
         end
         if selected > 0 then
           local selectedName, selectedType = GetTradeSkillInfo(selected)
           if selectedType ~= "header" and RecipeNameMatches(matchers, selectedName) then
-            return true
+            return true, true, true
           end
         end
-        return false
+        return false, true, true
       end
-      return true
+      return true, true, true
     end
 
     -- Keep MoP deterministic: if legacy API is present, do not branch into C_TradeSkillUI.
-    return false
+    return false, recipeCount > 0, false
   end
 
   if C_TradeSkillUI and C_TradeSkillUI.GetAllRecipeIDs and C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.SelectRecipe then
     local recipeIds = C_TradeSkillUI.GetAllRecipeIDs() or {}
+    local recipeCount = 0
     for _, recipeId in ipairs(recipeIds) do
       local info = C_TradeSkillUI.GetRecipeInfo(recipeId)
+      if info and info.name then
+        recipeCount = recipeCount + 1
+      end
       if info and RecipeNameMatches(matchers, info.name) then
         pcall(C_TradeSkillUI.SelectRecipe, recipeId)
-        return true
+        return true, true, true
       end
     end
+    return false, recipeCount > 0, false
   end
 
-  return false
+  return false, false, false
 end
 
 local function IsRecipeSelectedByNames(recipeNames)
@@ -673,10 +727,11 @@ local function IsRecipeSelectedByNames(recipeNames)
   return false
 end
 
-local function TrySelectRecipeWithRetry(recipeNames, attemptsLeft, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession)
+local function TrySelectRecipeWithRetry(recipeNames, attemptsLeft, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession, options)
   attemptsLeft = tonumber(attemptsLeft) or 0
   if attemptsLeft <= 0 then return false end
   didForcedReopen = didForcedReopen and true or false
+  options = options or {}
   requestId = tonumber(requestId) or 0
   if requestId == 0 then return false end
   if requestId ~= (tonumber(Guide.tinkerSelectionRequestId) or 0) then
@@ -685,7 +740,7 @@ local function TrySelectRecipeWithRetry(recipeNames, attemptsLeft, didForcedReop
   if not isWindowOpen() then
     if C_Timer and C_Timer.After and attemptsLeft > 1 then
       C_Timer.After(0.1, function()
-        TrySelectRecipeWithRetry(recipeNames, attemptsLeft - 1, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession)
+        TrySelectRecipeWithRetry(recipeNames, attemptsLeft - 1, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession, options)
       end)
     end
     return false
@@ -693,22 +748,41 @@ local function TrySelectRecipeWithRetry(recipeNames, attemptsLeft, didForcedReop
 
   -- Always attempt selection, then verify the currently selected recipe.
   -- This avoids first-open race conditions and supports re-click re-selection.
-  TrySelectRecipeByNames(recipeNames)
+  local selectedRecipe, recipeListPopulated, foundRecipe = TrySelectRecipeByNames(recipeNames)
   if IsRecipeSelectedByNames(recipeNames) then
     return true
+  end
+  if selectedRecipe then
+    return true
+  end
+
+  if options.failWhenRecipeListPopulated ~= false and recipeListPopulated and not foundRecipe then
+    local failureMessage = options.failureMessage
+    if type(failureMessage) ~= "string" or failureMessage == "" then
+      failureMessage = ("Recipe not learned or unavailable: %s."):format(FormatRecipeNamesForMessage(recipeNames))
+    end
+    WSGH.Util.Print(failureMessage)
+    return false
   end
 
   -- If selection keeps failing while the frame is open, force one reopen to
   -- reset internal trade-skill state when the non-protected API can do so.
-  if not didForcedReopen and attemptsLeft <= 12 then
+  if options.allowForcedReopen ~= false and not didForcedReopen and attemptsLeft <= 12 then
     closeProfession()
     openProfession(false)
     didForcedReopen = true
   end
 
+  if attemptsLeft <= 1 then
+    if type(options.failureMessage) == "string" and options.failureMessage ~= "" then
+      WSGH.Util.Print(options.failureMessage)
+    end
+    return false
+  end
+
   if C_Timer and C_Timer.After and attemptsLeft > 1 then
     C_Timer.After(0.1, function()
-      TrySelectRecipeWithRetry(recipeNames, attemptsLeft - 1, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession)
+      TrySelectRecipeWithRetry(recipeNames, attemptsLeft - 1, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession, options)
     end)
   end
   return false
@@ -720,6 +794,17 @@ local function TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft, 
   local targetName = GetSpellInfo(tinkerSpellId)
   if not targetName or targetName == "" then return false end
   return TrySelectRecipeWithRetry(targetName, attemptsLeft, didForcedReopen, requestId, IsEngineeringWindowOpen, OpenEngineeringProfession, CloseEngineeringWindowIfOpen)
+end
+
+local function TrySelectEnchantingRecipeWithRetry(enchantSpellId, attemptsLeft, didForcedReopen, requestId)
+  enchantSpellId = tonumber(enchantSpellId) or 0
+  if enchantSpellId == 0 then return false end
+  local targetName = GetSpellInfo(enchantSpellId)
+  if not targetName or targetName == "" then return false end
+  return TrySelectRecipeWithRetry(targetName, attemptsLeft, didForcedReopen, requestId, IsEnchantingWindowOpen, OpenEnchantingProfession, CloseEnchantingWindowIfOpen, {
+    allowForcedReopen = false,
+    failureMessage = ("Enchanting recipe not learned or unavailable: %s."):format(targetName),
+  })
 end
 
 local function BlacksmithingSocketRecipeNamesForSlot(slotId)
@@ -743,6 +828,17 @@ local function IsBlacksmithingSocketHint(rowData)
   if not rowData or not rowData.socketHintText then return false end
   local slotId = tonumber(rowData.slotId) or 0
   return slotId == 9 or slotId == 10
+end
+
+local function IsSelfEnchantingRingTask(task)
+  if not task or task.type ~= "APPLY_ENCHANT" or task.manualOnly ~= true then
+    return false
+  end
+  local slotId = tonumber(task.slotId) or 0
+  if slotId ~= 11 and slotId ~= 12 then
+    return false
+  end
+  return WSGH.Util and WSGH.Util.HasEnchanting and WSGH.Util.HasEnchanting() or false
 end
 
 local function ClearActionGuidanceHighlights()
@@ -773,6 +869,7 @@ local function ExecuteSocketAction(action)
   Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   CloseEngineeringWindowIfOpen()
   CloseBlacksmithingWindowIfOpen()
+  CloseEnchantingWindowIfOpen()
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTargetsForSlot then
     WSGH.UI.Highlight.SetTargetsForSlot(tonumber(t.slotId))
@@ -819,6 +916,7 @@ local function ExecuteEnchantAction(action)
   if action.type == "APPLY_TINKER" then
     Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
     local requestId = Guide.tinkerSelectionRequestId
+    CloseEnchantingWindowIfOpen()
     local opened = OpenEngineeringProfession()
     if not opened then
       WSGH.Util.Print("Unable to open Engineering automatically. Open Engineering and apply the tinker manually.")
@@ -829,11 +927,22 @@ local function ExecuteEnchantAction(action)
     Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
     CloseEngineeringWindowIfOpen()
     CloseBlacksmithingWindowIfOpen()
-    if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
-      WSGH.UI.Highlight.RequestEnchantBagRefresh()
+    local requestId = Guide.tinkerSelectionRequestId
+    if IsSelfEnchantingRingTask(t) then
+      local opened = OpenEnchantingProfession()
+      if not opened then
+        WSGH.Util.Print("Unable to open Enchanting automatically. Open Enchanting and apply the ring enchant manually.")
+      end
+      OpenCharacterFrame()
+      TrySelectEnchantingRecipeWithRetry(tonumber(t.wantEnchantId) or 0, 20, false, requestId)
+    else
+      CloseEnchantingWindowIfOpen()
+      if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
+        WSGH.UI.Highlight.RequestEnchantBagRefresh()
+      end
+      WSGH.Util.OpenBagsForGuidance()
+      OpenCharacterFrame()
     end
-    WSGH.Util.OpenBagsForGuidance()
-    OpenCharacterFrame()
   end
 
   WSGH.UI.Highlight.Refresh()
@@ -853,6 +962,7 @@ local function ExecuteSocketHintAction(rowData)
   local itemId = tonumber(rowData.socketHintItemId) or 0
   local extraItemId = tonumber(rowData.socketHintExtraItemId) or 0
   local isBlacksmithingSocket = IsBlacksmithingSocketHint(rowData)
+  CloseEnchantingWindowIfOpen()
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
     if isBlacksmithingSocket then
@@ -887,7 +997,7 @@ end
 
 local function NextActionRequiresDirectClick(action)
   if not action then return false end
-  return action.type == "SOCKET_GEM" or action.type == "APPLY_TINKER"
+  return action.type == "SOCKET_GEM" or action.type == "APPLY_TINKER" or IsSelfEnchantingRingTask(action.task)
 end
 
 local function PrimeGuidanceForAction(action)
@@ -910,6 +1020,7 @@ local function PrimeGuidanceForAction(action)
   end
 
   if action.type == "APPLY_ENCHANT" or action.type == "APPLY_TINKER" then
+    local isSelfEnchantingRing = IsSelfEnchantingRingTask(t)
     if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
       local highlightItemId = tonumber(t.wantEnchantItemId)
       if action.type == "APPLY_TINKER" then
@@ -917,11 +1028,13 @@ local function PrimeGuidanceForAction(action)
       end
       WSGH.UI.Highlight.SetEnchantTarget(tonumber(t.wantEnchantId), highlightItemId, tonumber(t.slotId))
     end
-    if action.type == "APPLY_ENCHANT" and WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
+    if action.type == "APPLY_ENCHANT" and not isSelfEnchantingRing and WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
       WSGH.UI.Highlight.RequestEnchantBagRefresh()
     end
     if action.type == "APPLY_TINKER" then
       WSGH.Util.Print("Next step requires another click to open Engineering for the tinker.")
+    elseif isSelfEnchantingRing then
+      WSGH.Util.Print("Next step requires another click to open Enchanting for the ring enchant.")
     end
   end
 end
