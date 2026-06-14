@@ -18,13 +18,21 @@ local function RestorePosition(frame)
   frame:SetPoint(ui.point, UIParent, ui.relativePoint, ui.x, ui.y)
 end
 
+local function IsFrameVisible(frame)
+  if not frame then return false end
+  if frame.IsVisible then
+    return frame:IsVisible()
+  end
+  return frame:IsShown()
+end
+
 local function CloseUIForCombat()
   if not (
-    (WSGH.UI.frame and WSGH.UI.frame:IsShown())
-    or (WSGH.UI.shoppingFrame and WSGH.UI.shoppingFrame:IsShown())
-    or (WSGH.UI.shoppingReminder and WSGH.UI.shoppingReminder:IsShown())
-    or (WSGH.UI.importDialog and WSGH.UI.importDialog:IsShown())
-    or (WSGH.UI.Help and WSGH.UI.Help.dialog and WSGH.UI.Help.dialog:IsShown())
+    IsFrameVisible(WSGH.UI.frame)
+    or IsFrameVisible(WSGH.UI.shoppingFrame)
+    or IsFrameVisible(WSGH.UI.shoppingReminder)
+    or IsFrameVisible(WSGH.UI.importDialog)
+    or IsFrameVisible(WSGH.UI.Help and WSGH.UI.Help.dialog)
   ) then
     return
   end
@@ -43,6 +51,24 @@ local Guide = WSGH.UI.Guide
 Guide.currentAction = Guide.currentAction or nil
 Guide.tinkerSelectionRequestId = tonumber(Guide.tinkerSelectionRequestId) or 0
 
+local function ClearHighlights()
+  if not WSGH.UI.Highlight then return end
+  if WSGH.UI.Highlight.ClearAll then
+    WSGH.UI.Highlight.ClearAll()
+    return
+  end
+
+  if WSGH.UI.Highlight.SetTarget then
+    WSGH.UI.Highlight.SetTarget(nil, nil)
+  end
+  if WSGH.UI.Highlight.SetEnchantTarget then
+    WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
+  end
+  if WSGH.UI.Highlight.SetSocketHintTarget then
+    WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
+  end
+end
+
 local function ResetRuntimeState()
   EnsureUIState()
   WSGH.State.plan = nil
@@ -51,17 +77,11 @@ local function ResetRuntimeState()
   Guide.currentAction = nil
   Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   WSGH.UI.pendingPurchases = {}
+  WSGH.UI.pendingPurchaseBagCounts = {}
   WSGH.UI.pendingPurchasesByName = {}
   WSGH.UI.reforgeReminder = nil
 
-  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
-    WSGH.UI.Highlight.SetTarget(nil, nil)
-  elseif WSGH.UI.Highlight and WSGH.UI.Highlight.ClearAll then
-    WSGH.UI.Highlight.ClearAll()
-  end
-  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
-    WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
-  end
+  ClearHighlights()
 
   if WSGH.UI.scroll then
     FauxScrollFrame_SetOffset(WSGH.UI.scroll, 0)
@@ -120,6 +140,8 @@ end
 local HasEquippedSnapshotChanged
 local HasUpgradeSnapshotChanged
 local BuildDiffAndRender
+local RegisterUIEvents
+local UnregisterUIEvents
 
 local function RuntimePollUpdate(self, elapsed)
   self.pollElapsed = (tonumber(self.pollElapsed) or 0) + (tonumber(elapsed) or 0)
@@ -346,17 +368,17 @@ local function OpenCharacterFrame()
   return CharacterFrame and CharacterFrame:IsShown()
 end
 
-local function GetEngineeringProfession()
+local function GetPrimaryProfession(professionDefinition)
   local professionName = nil
   local skillLineId = nil
-  local engineeringDefinition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENGINEERING or {}
-  local engineeringSkillLineId = tonumber(engineeringDefinition.skillLineId) or 0
+  professionDefinition = professionDefinition or {}
+  local targetSkillLineId = tonumber(professionDefinition.skillLineId) or 0
   if type(GetProfessions) == "function" and type(GetProfessionInfo) == "function" then
     local prof1, prof2 = GetProfessions()
     for _, prof in ipairs({ prof1, prof2 }) do
       if prof then
         local name, _, _, _, _, _, skillLine = GetProfessionInfo(prof)
-        if engineeringSkillLineId ~= 0 and tonumber(skillLine) == engineeringSkillLineId then
+        if targetSkillLineId ~= 0 and tonumber(skillLine) == targetSkillLineId then
           professionName = name
           skillLineId = tonumber(skillLine)
           break
@@ -367,11 +389,11 @@ local function GetEngineeringProfession()
   return professionName, skillLineId
 end
 
-local function IsCurrentTradeSkillEngineering()
-  local professionName = GetEngineeringProfession()
-  local engineeringDefinition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENGINEERING or {}
-  local engineeringSkillLineId = tonumber(engineeringDefinition.skillLineId) or 0
-  local engineeringNamePattern = type(engineeringDefinition.namePattern) == "string" and engineeringDefinition.namePattern:lower() or "engineer"
+local function IsCurrentTradeSkillProfession(professionDefinition)
+  professionDefinition = professionDefinition or {}
+  local professionName = GetPrimaryProfession(professionDefinition)
+  local targetSkillLineId = tonumber(professionDefinition.skillLineId) or 0
+  local namePattern = type(professionDefinition.namePattern) == "string" and professionDefinition.namePattern:lower() or nil
 
   if TradeSkillFrame and TradeSkillFrame:IsShown() and type(GetTradeSkillLine) == "function" then
     local openName = GetTradeSkillLine()
@@ -380,7 +402,7 @@ local function IsCurrentTradeSkillEngineering()
         return true
       end
       local lowered = openName:lower()
-      if lowered:find(engineeringNamePattern, 1, true) then
+      if namePattern and lowered:find(namePattern, 1, true) then
         return true
       end
       return false
@@ -390,9 +412,9 @@ local function IsCurrentTradeSkillEngineering()
   if ProfessionsFrame and ProfessionsFrame:IsShown() and C_TradeSkillUI and C_TradeSkillUI.GetTradeSkillLine then
     local ok, info = pcall(C_TradeSkillUI.GetTradeSkillLine)
     if ok and type(info) == "table" then
-      if engineeringSkillLineId ~= 0 and tonumber(info.skillLineID) == engineeringSkillLineId then return true end
+      if targetSkillLineId ~= 0 and tonumber(info.skillLineID) == targetSkillLineId then return true end
       if professionName and info.professionName == professionName then return true end
-      if type(info.professionName) == "string" and info.professionName:lower():find(engineeringNamePattern, 1, true) then
+      if namePattern and type(info.professionName) == "string" and info.professionName:lower():find(namePattern, 1, true) then
         return true
       end
       return false
@@ -402,18 +424,33 @@ local function IsCurrentTradeSkillEngineering()
   return nil
 end
 
-local function IsEngineeringWindowOpen()
-  local isEngineering = IsCurrentTradeSkillEngineering()
-  if isEngineering ~= nil then
-    return isEngineering
+local function IsProfessionWindowOpen(professionDefinition)
+  local isProfession = IsCurrentTradeSkillProfession(professionDefinition)
+  if isProfession ~= nil then
+    return isProfession
   end
   if TradeSkillFrame and TradeSkillFrame:IsShown() then return true end
   if ProfessionsFrame and ProfessionsFrame:IsShown() then return true end
   return false
 end
 
-local function OpenEngineeringProfession(allowProtectedCast)
-  if IsEngineeringWindowOpen() then
+local function IsEngineeringWindowOpen()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENGINEERING or {}
+  return IsProfessionWindowOpen(definition)
+end
+
+local function IsBlacksmithingWindowOpen()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.BLACKSMITHING or {}
+  return IsProfessionWindowOpen(definition)
+end
+
+local function IsEnchantingWindowOpen()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENCHANTING or {}
+  return IsProfessionWindowOpen(definition)
+end
+
+local function OpenProfession(professionDefinition, allowProtectedCast)
+  if IsProfessionWindowOpen(professionDefinition) then
     return true
   end
 
@@ -421,20 +458,35 @@ local function OpenEngineeringProfession(allowProtectedCast)
     allowProtectedCast = true
   end
 
-  local professionName, skillLineId = GetEngineeringProfession()
+  local professionName, skillLineId = GetPrimaryProfession(professionDefinition)
 
   if C_TradeSkillUI and C_TradeSkillUI.OpenTradeSkill and skillLineId then
     pcall(C_TradeSkillUI.OpenTradeSkill, skillLineId)
   end
-  if allowProtectedCast and professionName and CastSpellByName and not IsEngineeringWindowOpen() then
+  if allowProtectedCast and professionName and CastSpellByName and not IsProfessionWindowOpen(professionDefinition) then
     pcall(CastSpellByName, professionName)
   end
 
-  return IsEngineeringWindowOpen()
+  return IsProfessionWindowOpen(professionDefinition)
 end
 
-local function CloseEngineeringWindowIfOpen()
-  if not IsEngineeringWindowOpen() then
+local function OpenEngineeringProfession(allowProtectedCast)
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENGINEERING or {}
+  return OpenProfession(definition, allowProtectedCast)
+end
+
+local function OpenBlacksmithingProfession(allowProtectedCast)
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.BLACKSMITHING or {}
+  return OpenProfession(definition, allowProtectedCast)
+end
+
+local function OpenEnchantingProfession(allowProtectedCast)
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENCHANTING or {}
+  return OpenProfession(definition, allowProtectedCast)
+end
+
+local function CloseProfessionWindowIfOpen(professionDefinition)
+  if not IsProfessionWindowOpen(professionDefinition) then
     return
   end
 
@@ -454,12 +506,103 @@ local function CloseEngineeringWindowIfOpen()
   end
 end
 
-local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
-  tinkerSpellId = tonumber(tinkerSpellId) or 0
-  if tinkerSpellId == 0 then return false end
-  local targetName = GetSpellInfo(tinkerSpellId)
-  if not targetName or targetName == "" then return false end
-  local targetNorm = WSGH.Util.NormalizeName(targetName, true)
+local function CleanupAfterHide()
+  local runtimeWasActive = WSGH.UI.runtimeActive == true
+  WSGH.UI.runtimeActive = false
+
+  if runtimeWasActive then
+    Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
+  end
+
+  if UnregisterUIEvents then
+    UnregisterUIEvents()
+  end
+  SetRuntimePollingEnabled(false)
+  if WSGH.UI.Shopping and WSGH.UI.Shopping.DisableRuntimeListeners then
+    WSGH.UI.Shopping.DisableRuntimeListeners()
+  end
+  SetAuxiliaryFramesShown(false)
+  if WSGH.DB and WSGH.DB.profile and WSGH.DB.profile.ui then
+    WSGH.DB.profile.ui.shown = false
+  end
+  ClearHighlights()
+end
+
+local function CloseEngineeringWindowIfOpen()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENGINEERING or {}
+  CloseProfessionWindowIfOpen(definition)
+end
+
+local function CloseBlacksmithingWindowIfOpen()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.BLACKSMITHING or {}
+  CloseProfessionWindowIfOpen(definition)
+end
+
+local function CloseEnchantingWindowIfOpen()
+  local definition = WSGH.Const and WSGH.Const.PROFESSIONS and WSGH.Const.PROFESSIONS.ENCHANTING or {}
+  CloseProfessionWindowIfOpen(definition)
+end
+
+local function BuildRecipeNameMatchers(recipeNames)
+  if type(recipeNames) == "string" then
+    recipeNames = { recipeNames }
+  end
+  if type(recipeNames) ~= "table" then return nil end
+
+  local matchers = { exact = {}, normalized = {} }
+  for _, recipeName in ipairs(recipeNames) do
+    if type(recipeName) == "string" and recipeName ~= "" then
+      matchers.exact[recipeName] = true
+      local normalized = WSGH.Util.NormalizeName(recipeName, true)
+      if normalized ~= "" then
+        matchers.normalized[normalized] = true
+      end
+    end
+  end
+  if not next(matchers.exact) and not next(matchers.normalized) then return nil end
+  return matchers
+end
+
+local function RecipeNameMatches(matchers, recipeName)
+  if not matchers or type(recipeName) ~= "string" or recipeName == "" then return false end
+  if matchers.exact[recipeName] then return true end
+  local normalized = WSGH.Util.NormalizeName(recipeName, true)
+  if normalized == "" then return false end
+  if matchers.normalized[normalized] == true then return true end
+  for target in pairs(matchers.normalized) do
+    if normalized:sub(1, #target) == target then
+      local suffixText = normalized:sub(#target + 1)
+      local suffix = WSGH.Util.Trim(suffixText)
+      if suffixText:sub(1, 1) == " " and suffix:match("^%d+$") then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function FormatRecipeNamesForMessage(recipeNames)
+  if type(recipeNames) == "string" then
+    return recipeNames
+  end
+  if type(recipeNames) ~= "table" then
+    return "requested recipe"
+  end
+  local names = {}
+  for _, recipeName in ipairs(recipeNames) do
+    if type(recipeName) == "string" and recipeName ~= "" then
+      names[#names + 1] = recipeName
+    end
+  end
+  if #names == 0 then
+    return "requested recipe"
+  end
+  return table.concat(names, " / ")
+end
+
+local function TrySelectRecipeByNames(recipeNames)
+  local matchers = BuildRecipeNameMatchers(recipeNames)
+  if not matchers then return false, false, false end
 
   local hasLegacyTradeSkillApi =
     type(GetNumTradeSkills) == "function" and
@@ -480,6 +623,7 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
     end
 
     local num = tonumber(GetNumTradeSkills()) or 0
+    local recipeCount = 0
     if type(ExpandTradeSkillSubClass) == "function" then
       for i = 1, num do
         local _, skillType, _, isExpanded = GetTradeSkillInfo(i)
@@ -492,13 +636,12 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
     local candidateIndex = nil
     for i = 1, num do
       local name, skillType = GetTradeSkillInfo(i)
-      if skillType ~= "header" and name == targetName then
-        candidateIndex = i
-        break
-      end
-      if skillType ~= "header" and targetNorm ~= "" and WSGH.Util.NormalizeName(name, true) == targetNorm then
-        candidateIndex = i
-        break
+      if skillType ~= "header" then
+        recipeCount = recipeCount + 1
+        if RecipeNameMatches(matchers, name) then
+          candidateIndex = i
+          break
+        end
       end
     end
 
@@ -521,54 +664,51 @@ local function TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
       if type(GetTradeSkillSelectionIndex) == "function" then
         local selected = tonumber(GetTradeSkillSelectionIndex()) or 0
         if selected == candidateIndex then
-          return true
+          return true, true, true
         end
         if selected > 0 then
           local selectedName, selectedType = GetTradeSkillInfo(selected)
-          if selectedType ~= "header" and selectedName and WSGH.Util.NormalizeName(selectedName, true) == targetNorm then
-            return true
+          if selectedType ~= "header" and RecipeNameMatches(matchers, selectedName) then
+            return true, true, true
           end
         end
-        return false
+        return false, true, true
       end
-      return true
+      return true, true, true
     end
 
     -- Keep MoP deterministic: if legacy API is present, do not branch into C_TradeSkillUI.
-    return false
+    return false, recipeCount > 0, false
   end
 
   if C_TradeSkillUI and C_TradeSkillUI.GetAllRecipeIDs and C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.SelectRecipe then
     local recipeIds = C_TradeSkillUI.GetAllRecipeIDs() or {}
+    local recipeCount = 0
     for _, recipeId in ipairs(recipeIds) do
       local info = C_TradeSkillUI.GetRecipeInfo(recipeId)
-      if info and info.name == targetName then
-        pcall(C_TradeSkillUI.SelectRecipe, recipeId)
-        return true
+      if info and info.name then
+        recipeCount = recipeCount + 1
       end
-      if info and targetNorm ~= "" and WSGH.Util.NormalizeName(info.name, true) == targetNorm then
+      if info and RecipeNameMatches(matchers, info.name) then
         pcall(C_TradeSkillUI.SelectRecipe, recipeId)
-        return true
+        return true, true, true
       end
     end
+    return false, recipeCount > 0, false
   end
 
-  return false
+  return false, false, false
 end
 
-local function IsEngineeringRecipeSelected(tinkerSpellId)
-  tinkerSpellId = tonumber(tinkerSpellId) or 0
-  if tinkerSpellId == 0 then return false end
-  local targetName = GetSpellInfo(tinkerSpellId)
-  if not targetName or targetName == "" then return false end
-  local targetNorm = WSGH.Util.NormalizeName(targetName, true)
-  if targetNorm == "" then return false end
+local function IsRecipeSelectedByNames(recipeNames)
+  local matchers = BuildRecipeNameMatchers(recipeNames)
+  if not matchers then return false end
 
   if type(GetTradeSkillSelectionIndex) == "function" and type(GetTradeSkillInfo) == "function" then
     local selected = tonumber(GetTradeSkillSelectionIndex()) or 0
     if selected > 0 then
       local selectedName, selectedType = GetTradeSkillInfo(selected)
-      if selectedType ~= "header" and selectedName and WSGH.Util.NormalizeName(selectedName, true) == targetNorm then
+      if selectedType ~= "header" and RecipeNameMatches(matchers, selectedName) then
         return true
       end
     end
@@ -578,7 +718,7 @@ local function IsEngineeringRecipeSelected(tinkerSpellId)
     local recipeId = tonumber(C_TradeSkillUI.GetSelectedRecipeID()) or 0
     if recipeId ~= 0 then
       local info = C_TradeSkillUI.GetRecipeInfo(recipeId)
-      if info and WSGH.Util.NormalizeName(info.name, true) == targetNorm then
+      if info and RecipeNameMatches(matchers, info.name) then
         return true
       end
     end
@@ -587,19 +727,20 @@ local function IsEngineeringRecipeSelected(tinkerSpellId)
   return false
 end
 
-local function TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft, didForcedReopen, requestId)
+local function TrySelectRecipeWithRetry(recipeNames, attemptsLeft, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession, options)
   attemptsLeft = tonumber(attemptsLeft) or 0
   if attemptsLeft <= 0 then return false end
   didForcedReopen = didForcedReopen and true or false
+  options = options or {}
   requestId = tonumber(requestId) or 0
   if requestId == 0 then return false end
   if requestId ~= (tonumber(Guide.tinkerSelectionRequestId) or 0) then
     return false
   end
-  if not IsEngineeringWindowOpen() then
+  if not isWindowOpen() then
     if C_Timer and C_Timer.After and attemptsLeft > 1 then
       C_Timer.After(0.1, function()
-        TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft - 1, didForcedReopen, requestId)
+        TrySelectRecipeWithRetry(recipeNames, attemptsLeft - 1, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession, options)
       end)
     end
     return false
@@ -607,45 +748,133 @@ local function TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft, 
 
   -- Always attempt selection, then verify the currently selected recipe.
   -- This avoids first-open race conditions and supports re-click re-selection.
-  TrySelectEngineeringRecipeByTinkerSpellId(tinkerSpellId)
-  if IsEngineeringRecipeSelected(tinkerSpellId) then
+  local selectedRecipe, recipeListPopulated, foundRecipe = TrySelectRecipeByNames(recipeNames)
+  if IsRecipeSelectedByNames(recipeNames) then
     return true
+  end
+  if selectedRecipe then
+    return true
+  end
+
+  if options.failWhenRecipeListPopulated ~= false and recipeListPopulated and not foundRecipe then
+    local failureMessage = options.failureMessage
+    if type(failureMessage) ~= "string" or failureMessage == "" then
+      failureMessage = ("Recipe not learned or unavailable: %s."):format(FormatRecipeNamesForMessage(recipeNames))
+    end
+    WSGH.Util.Print(failureMessage)
+    return false
   end
 
   -- If selection keeps failing while the frame is open, force one reopen to
   -- reset internal trade-skill state when the non-protected API can do so.
-  if not didForcedReopen and attemptsLeft <= 12 then
-    CloseEngineeringWindowIfOpen()
-    OpenEngineeringProfession(false)
+  if options.allowForcedReopen ~= false and not didForcedReopen and attemptsLeft <= 12 then
+    closeProfession()
+    openProfession(false)
     didForcedReopen = true
+  end
+
+  if attemptsLeft <= 1 then
+    if type(options.failureMessage) == "string" and options.failureMessage ~= "" then
+      WSGH.Util.Print(options.failureMessage)
+    end
+    return false
   end
 
   if C_Timer and C_Timer.After and attemptsLeft > 1 then
     C_Timer.After(0.1, function()
-      TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft - 1, didForcedReopen, requestId)
+      TrySelectRecipeWithRetry(recipeNames, attemptsLeft - 1, didForcedReopen, requestId, isWindowOpen, openProfession, closeProfession, options)
     end)
   end
   return false
+end
+
+local function TrySelectEngineeringRecipeWithRetry(tinkerSpellId, attemptsLeft, didForcedReopen, requestId)
+  tinkerSpellId = tonumber(tinkerSpellId) or 0
+  if tinkerSpellId == 0 then return false end
+  local targetName = GetSpellInfo(tinkerSpellId)
+  if not targetName or targetName == "" then return false end
+  return TrySelectRecipeWithRetry(targetName, attemptsLeft, didForcedReopen, requestId, IsEngineeringWindowOpen, OpenEngineeringProfession, CloseEngineeringWindowIfOpen)
+end
+
+local function TrySelectEnchantingRecipeWithRetry(enchantSpellId, attemptsLeft, didForcedReopen, requestId)
+  enchantSpellId = tonumber(enchantSpellId) or 0
+  if enchantSpellId == 0 then return false end
+  local targetName = GetSpellInfo(enchantSpellId)
+  if not targetName or targetName == "" then return false end
+  return TrySelectRecipeWithRetry(targetName, attemptsLeft, didForcedReopen, requestId, IsEnchantingWindowOpen, OpenEnchantingProfession, CloseEnchantingWindowIfOpen, {
+    allowForcedReopen = false,
+    failureMessage = ("Enchanting recipe not learned or unavailable: %s."):format(targetName),
+  })
+end
+
+local function BlacksmithingSocketRecipeNamesForSlot(slotId)
+  slotId = tonumber(slotId) or 0
+  if slotId == 9 then
+    return "Socket Bracer"
+  end
+  if slotId == 10 then
+    return "Socket Gloves"
+  end
+  return nil
+end
+
+local function TrySelectBlacksmithingSocketRecipeWithRetry(slotId, attemptsLeft, didForcedReopen, requestId)
+  local recipeNames = BlacksmithingSocketRecipeNamesForSlot(slotId)
+  if not recipeNames then return false end
+  return TrySelectRecipeWithRetry(recipeNames, attemptsLeft, didForcedReopen, requestId, IsBlacksmithingWindowOpen, OpenBlacksmithingProfession, CloseBlacksmithingWindowIfOpen)
+end
+
+local function IsBlacksmithingSocketHint(rowData)
+  if not rowData or not rowData.socketHintText then return false end
+  local slotId = tonumber(rowData.slotId) or 0
+  return slotId == 9 or slotId == 10
+end
+
+local function IsSelfEnchantingRingTask(task)
+  if not task or task.type ~= "APPLY_ENCHANT" or task.manualOnly ~= true then
+    return false
+  end
+  local slotId = tonumber(task.slotId) or 0
+  if slotId ~= 11 and slotId ~= 12 then
+    return false
+  end
+  return WSGH.Util and WSGH.Util.HasEnchanting and WSGH.Util.HasEnchanting() or false
+end
+
+local function ClearActionGuidanceHighlights()
+  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
+    WSGH.UI.Shopping.ClearJPHighlight()
+  end
+  if WSGH.UI.Highlight and WSGH.UI.Highlight.ClearAll then
+    WSGH.UI.Highlight.ClearAll()
+    return
+  end
+  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
+    WSGH.UI.Highlight.SetTarget(nil, nil)
+  end
+  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
+    WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
+  end
+  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
+    WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
+  end
 end
 
 local function ExecuteSocketAction(action)
   local t = action and action.task
   if not t then return end
 
-  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
-    WSGH.UI.Shopping.ClearJPHighlight()
-  end
+  ClearActionGuidanceHighlights()
 
   Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   CloseEngineeringWindowIfOpen()
+  CloseBlacksmithingWindowIfOpen()
+  CloseEnchantingWindowIfOpen()
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTargetsForSlot then
     WSGH.UI.Highlight.SetTargetsForSlot(tonumber(t.slotId))
   else
     WSGH.UI.Highlight.SetTarget(tonumber(t.wantGemId), tonumber(t.socketIndex), tonumber(t.slotId))
-  end
-  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
-    WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
   end
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestBagRefresh then
@@ -671,9 +900,7 @@ local function ExecuteEnchantAction(action)
   local t = action and action.task
   if not t then return end
 
-  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
-    WSGH.UI.Shopping.ClearJPHighlight()
-  end
+  ClearActionGuidanceHighlights()
 
   CloseSocketFrameIfOpen()
 
@@ -689,6 +916,7 @@ local function ExecuteEnchantAction(action)
   if action.type == "APPLY_TINKER" then
     Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
     local requestId = Guide.tinkerSelectionRequestId
+    CloseEnchantingWindowIfOpen()
     local opened = OpenEngineeringProfession()
     if not opened then
       WSGH.Util.Print("Unable to open Engineering automatically. Open Engineering and apply the tinker manually.")
@@ -698,11 +926,23 @@ local function ExecuteEnchantAction(action)
   else
     Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
     CloseEngineeringWindowIfOpen()
-    if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
-      WSGH.UI.Highlight.RequestEnchantBagRefresh()
+    CloseBlacksmithingWindowIfOpen()
+    local requestId = Guide.tinkerSelectionRequestId
+    if IsSelfEnchantingRingTask(t) then
+      local opened = OpenEnchantingProfession()
+      if not opened then
+        WSGH.Util.Print("Unable to open Enchanting automatically. Open Enchanting and apply the ring enchant manually.")
+      end
+      OpenCharacterFrame()
+      TrySelectEnchantingRecipeWithRetry(tonumber(t.wantEnchantId) or 0, 20, false, requestId)
+    else
+      CloseEnchantingWindowIfOpen()
+      if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
+        WSGH.UI.Highlight.RequestEnchantBagRefresh()
+      end
+      WSGH.Util.OpenBagsForGuidance()
+      OpenCharacterFrame()
     end
-    WSGH.Util.OpenBagsForGuidance()
-    OpenCharacterFrame()
   end
 
   WSGH.UI.Highlight.Refresh()
@@ -715,30 +955,39 @@ end
 
 local function ExecuteSocketHintAction(rowData)
   if not rowData then return end
-  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
-    WSGH.UI.Shopping.ClearJPHighlight()
-  end
+  ClearActionGuidanceHighlights()
   Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
   CloseSocketFrameIfOpen()
   local slotId = tonumber(rowData.slotId) or 0
   local itemId = tonumber(rowData.socketHintItemId) or 0
   local extraItemId = tonumber(rowData.socketHintExtraItemId) or 0
+  local isBlacksmithingSocket = IsBlacksmithingSocketHint(rowData)
+  CloseEnchantingWindowIfOpen()
 
-  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
-    WSGH.UI.Highlight.SetTarget(nil, nil)
-  end
-  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
-    WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
-  end
   if WSGH.UI.Highlight and WSGH.UI.Highlight.SetSocketHintTarget then
-    WSGH.UI.Highlight.SetSocketHintTarget(itemId, slotId, extraItemId)
+    if isBlacksmithingSocket then
+      WSGH.UI.Highlight.SetSocketHintTarget(nil, slotId, nil)
+    else
+      WSGH.UI.Highlight.SetSocketHintTarget(itemId, slotId, extraItemId)
+    end
   end
 
-  WSGH.Util.OpenBagsForGuidance()
-  OpenCharacterFrame()
+  if isBlacksmithingSocket then
+    local opened = OpenBlacksmithingProfession()
+    if not opened then
+      WSGH.Util.Print("Unable to open Blacksmithing automatically. Open Blacksmithing and apply the socket manually.")
+    end
+    OpenCharacterFrame()
+    TrySelectBlacksmithingSocketRecipeWithRetry(slotId, 20, false, Guide.tinkerSelectionRequestId)
+  else
+    WSGH.Util.OpenBagsForGuidance()
+    OpenCharacterFrame()
+  end
 
   if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestBagRefresh then
-    WSGH.UI.Highlight.RequestBagRefresh()
+    if not isBlacksmithingSocket then
+      WSGH.UI.Highlight.RequestBagRefresh()
+    end
   end
 
   if itemId == 0 and extraItemId == 0 then
@@ -748,25 +997,20 @@ end
 
 local function NextActionRequiresDirectClick(action)
   if not action then return false end
-  return action.type == "SOCKET_GEM" or action.type == "APPLY_TINKER"
+  return action.type == "SOCKET_GEM" or action.type == "APPLY_TINKER" or IsSelfEnchantingRingTask(action.task)
 end
 
 local function PrimeGuidanceForAction(action)
   local t = action and action.task
   if not t then return end
 
-  if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.ClearJPHighlight then
-    WSGH.UI.Shopping.ClearJPHighlight()
-  end
+  ClearActionGuidanceHighlights()
 
   if action.type == "SOCKET_GEM" then
     if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTargetsForSlot then
       WSGH.UI.Highlight.SetTargetsForSlot(tonumber(t.slotId))
     elseif WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
       WSGH.UI.Highlight.SetTarget(tonumber(t.wantGemId), tonumber(t.socketIndex), tonumber(t.slotId))
-    end
-    if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
-      WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
     end
     if WSGH.UI.Highlight and WSGH.UI.Highlight.RequestBagRefresh then
       WSGH.UI.Highlight.RequestBagRefresh()
@@ -776,9 +1020,7 @@ local function PrimeGuidanceForAction(action)
   end
 
   if action.type == "APPLY_ENCHANT" or action.type == "APPLY_TINKER" then
-    if WSGH.UI.Highlight and WSGH.UI.Highlight.SetTarget then
-      WSGH.UI.Highlight.SetTarget(nil, nil)
-    end
+    local isSelfEnchantingRing = IsSelfEnchantingRingTask(t)
     if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
       local highlightItemId = tonumber(t.wantEnchantItemId)
       if action.type == "APPLY_TINKER" then
@@ -786,11 +1028,13 @@ local function PrimeGuidanceForAction(action)
       end
       WSGH.UI.Highlight.SetEnchantTarget(tonumber(t.wantEnchantId), highlightItemId, tonumber(t.slotId))
     end
-    if action.type == "APPLY_ENCHANT" and WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
+    if action.type == "APPLY_ENCHANT" and not isSelfEnchantingRing and WSGH.UI.Highlight and WSGH.UI.Highlight.RequestEnchantBagRefresh then
       WSGH.UI.Highlight.RequestEnchantBagRefresh()
     end
     if action.type == "APPLY_TINKER" then
       WSGH.Util.Print("Next step requires another click to open Engineering for the tinker.")
+    elseif isSelfEnchantingRing then
+      WSGH.Util.Print("Next step requires another click to open Enchanting for the ring enchant.")
     end
   end
 end
@@ -1002,8 +1246,6 @@ end
 local BuildPlanFromEquipped
 local BuildFromEquippedAndRender
 local TryLoadSavedImport = function() end
-local RegisterUIEvents
-local UnregisterUIEvents
 local function IsAuctionHouseOpen()
   if AuctionHouseFrame and AuctionHouseFrame:IsShown() then return true end
   if AuctionFrame and AuctionFrame:IsShown() then return true end
@@ -1245,6 +1487,7 @@ end
 local function OnRowAction(rowData)
   if not rowData then return end
   if rowData.rowStatus == "WRONG_ITEM" then
+    ClearActionGuidanceHighlights()
     EquipExpectedItem(rowData)
     return
   end
@@ -1258,6 +1501,7 @@ local function OnRowAction(rowData)
   end
   local priority = WSGH.UI.GetRowActionPriority(rowData)
   if priority.hasUpgradeWork and not priority.hasSocketWork and not priority.hasEnchantWork then
+    ClearActionGuidanceHighlights()
     local itemName = GetItemInfo(rowData.expectedItemId or 0) or rowData.slotKey or "item"
     local current = tonumber(rowData.equippedUpgradeLevel) or 0
     local target = tonumber(rowData.expectedUpgradeStep) or 0
@@ -1331,11 +1575,7 @@ function WSGH.UI.Init()
     self:StopMovingOrSizing()
     SavePosition(self)
   end)
-  mainFrame:HookScript("OnHide", function()
-    if WSGH.UI.Highlight and WSGH.UI.Highlight.ClearAll then
-      WSGH.UI.Highlight.ClearAll()
-    end
-  end)
+  mainFrame:HookScript("OnHide", CleanupAfterHide)
   
   table.insert(UISpecialFrames, "WowSimsGearHelperFrame")
 
@@ -1755,7 +1995,7 @@ function WSGH.UI.Render()
         GameTooltip:AddLine(" ", 1, 1, 1, true)
         GameTooltip:AddLine("Import data may be incomplete.", 1, 0.82, 0.2, true)
         GameTooltip:AddLine("Please verify your import and update if it's incorrect.", 1, 0.82, 0.2, true)
-        GameTooltip:AddLine("Hover row ? icons and check warning subtitles for more information.", 1, 0.82, 0.2, true)
+        GameTooltip:AddLine("Hover row ? icons for more information.", 1, 0.82, 0.2, true)
         GameTooltip:Show()
       end)
       WSGH.UI.listWarningChip:SetScript("OnLeave", GameTooltip_Hide)
@@ -1819,6 +2059,7 @@ function WSGH.UI.Show()
   if WSGH.UI.Shopping and WSGH.UI.Shopping.EnableRuntimeListeners then
     WSGH.UI.Shopping.EnableRuntimeListeners()
   end
+  WSGH.UI.runtimeActive = true
   WSGH.UI.frame:Show()
   SetAuxiliaryFramesShown(true)
   WSGH.DB.profile.ui.shown = true
@@ -1829,19 +2070,8 @@ end
 
 function WSGH.UI.Hide()
   if not WSGH.UI.frame then return end
-  Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
-  UnregisterUIEvents()
-  SetRuntimePollingEnabled(false)
-  if WSGH.UI.Shopping and WSGH.UI.Shopping.DisableRuntimeListeners then
-    WSGH.UI.Shopping.DisableRuntimeListeners()
-  end
-  SetAuxiliaryFramesShown(false)
   WSGH.UI.frame:Hide()
-  WSGH.DB.profile.ui.shown = false
-  WSGH.UI.Highlight.SetTarget(nil, nil)
-  if WSGH.UI.Highlight and WSGH.UI.Highlight.SetEnchantTarget then
-    WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
-  end
+  CleanupAfterHide()
 end
 
 function WSGH.UI.Toggle()

@@ -26,6 +26,39 @@ local function StatusIcon(status)
   return WSGH.Const.ICON_NOTREADY
 end
 
+local function CountRowRemainingTasks(rowData)
+  if not rowData then return 0 end
+  local count = 0
+  if rowData.rowStatus == "WRONG_ITEM" then
+    count = count + 1
+  end
+  if rowData.socketHintText then
+    count = count + 1
+  end
+  for _, task in ipairs(rowData.socketTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then count = count + 1 end
+  end
+  for _, task in ipairs(rowData.deferredSocketTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then count = count + 1 end
+  end
+  for _, task in ipairs(rowData.enchantTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then count = count + 1 end
+  end
+  for _, task in ipairs(rowData.upgradeTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then count = count + 1 end
+  end
+  return count
+end
+
+local function RowBadgeIcon(rowData)
+  local warnings = rowData and rowData.importWarnings or {}
+  if type(warnings) ~= "table" then warnings = {} end
+  if #warnings > 0 then return WSGH.Const.ICON_QUESTION end
+  if not rowData then return WSGH.Const.ICON_NOTREADY end
+  if CountRowRemainingTasks(rowData) > 0 then return WSGH.Const.ICON_NOTREADY end
+  return WSGH.Const.ICON_READY
+end
+
 local function ShowTooltip(frame, itemLinkOrId)
   if not itemLinkOrId then return end
   GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
@@ -54,8 +87,6 @@ end
 local function SocketHintDescription(rowData)
   if not rowData then return "Add missing socket." end
   local hintItemId = tonumber(rowData.socketHintItemId) or 0
-  local extraId = tonumber(rowData.socketHintExtraItemId) or 0
-  local extraCount = tonumber(rowData.socketHintExtraItemCount) or 0
 
   local desc
   if hintItemId ~= 0 then
@@ -64,57 +95,35 @@ local function SocketHintDescription(rowData)
       TrackPendingItemInfo(hintItemId)
       C_Item.RequestLoadItemDataByID(hintItemId)
     end
-    if name then
+    if tonumber(rowData.slotId) == 6 then
+      desc = "Add socket: Belt buckle."
+    elseif name then
       desc = ("Add missing socket: %s."):format(name)
     else
       desc = rowData.socketHintText or ("Add missing socket: item " .. hintItemId .. ".")
     end
   else
-    desc = "Add socket: Blacksmithing."
-  end
-  if extraId ~= 0 and extraCount > 0 then
-    local extraName = GetItemInfo(extraId)
-    if not extraName and C_Item and C_Item.RequestLoadItemDataByID then
-      TrackPendingItemInfo(extraId)
-      C_Item.RequestLoadItemDataByID(extraId)
-    end
-    extraName = extraName or ("item " .. extraId)
-    desc = desc .. (" Requires %d x %s."):format(extraCount, extraName)
+    desc = rowData.socketHintText or "Add socket: Blacksmithing."
   end
   return desc
 end
 
-local function UpgradeProgressText(rowData)
-  if not rowData or rowData.rowStatus == "WRONG_ITEM" then return nil end
-  local expected = tonumber(rowData and rowData.expectedUpgradeStep)
-  if not expected then
-    local raw = rowData and rowData.upgradeStep
-    if type(raw) == "number" then
-      expected = tonumber(raw) or 0
-    elseif type(raw) == "string" then
-      local normalized = raw:gsub("%s+", ""):lower()
-      if normalized == "upgradestepone" then
-        expected = 1
-      elseif normalized == "upgradesteptwo" then
-        expected = 2
-      else
-        expected = tonumber(normalized:match("(%d+)$")) or 0
-      end
-    else
-      expected = 0
-    end
+local function GetItemName(itemId, fallbackPrefix)
+  itemId = tonumber(itemId) or 0
+  if itemId == 0 then return nil end
+  local name, link = GetItemInfo(itemId)
+  if not link and not name and C_Item and C_Item.RequestLoadItemDataByID then
+    TrackPendingItemInfo(itemId)
+    C_Item.RequestLoadItemDataByID(itemId)
   end
-  if expected <= 0 then return nil end
+  return link or name or ((fallbackPrefix or "item") .. " " .. tostring(itemId))
+end
 
-  local current = tonumber(rowData.equippedUpgradeLevel) or 0
-  local maxStep = tonumber(rowData.equippedUpgradeMax) or 0
-  if maxStep <= 0 then
-    maxStep = math.max(2, expected)
-  end
-  if current < 0 then current = 0 end
-  if current > maxStep then current = maxStep end
-
-  return ("(%d/%d)"):format(current, maxStep)
+local function GetSpellName(spellId, fallbackPrefix)
+  spellId = tonumber(spellId) or 0
+  if spellId == 0 then return nil end
+  local name = GetSpellInfo(spellId)
+  return name or ((fallbackPrefix or "spell") .. " " .. tostring(spellId))
 end
 
 local function FormatCurrentGemText(gemIds)
@@ -149,6 +158,259 @@ local function FormatCurrentGemText(gemIds)
   return text
 end
 
+local badgeCategoryColor = { 1, 0.82, 0 }
+local badgeTextColor = { 1, 1, 1 }
+local badgeTooltipTitleFont = nil
+local previousBadgeTooltipTitleFontObject = nil
+
+local function GetBadgeTooltipTitleFont()
+  if badgeTooltipTitleFont then return badgeTooltipTitleFont end
+  if not CreateFont then return GameFontNormal end
+
+  badgeTooltipTitleFont = CreateFont("WowSimsGearHelperBadgeTooltipTitleFont")
+  local baseFontObject = GameFontNormalLarge or GameFontNormal
+  if badgeTooltipTitleFont.CopyFontObject and baseFontObject then
+    badgeTooltipTitleFont:CopyFontObject(baseFontObject)
+  end
+
+  local font, size, flags
+  if baseFontObject and baseFontObject.GetFont then
+    font, size, flags = baseFontObject:GetFont()
+  end
+  if font and badgeTooltipTitleFont.SetFont then
+    local targetSize = math.max(13, math.floor(((tonumber(size) or 16) * 0.75) + 0.5))
+    badgeTooltipTitleFont:SetFont(font, targetSize, flags)
+  end
+  return badgeTooltipTitleFont
+end
+
+local function SetBadgeTooltipTitle(text, r, g, b)
+  GameTooltip:SetText(text, r, g, b)
+  if GameTooltipTextLeft1 and GameTooltipTextLeft1.SetFontObject then
+    if GameTooltipTextLeft1.GetFontObject then
+      previousBadgeTooltipTitleFontObject = GameTooltipTextLeft1:GetFontObject()
+    end
+    local titleFont = GetBadgeTooltipTitleFont()
+    if titleFont then
+      GameTooltipTextLeft1:SetFontObject(titleFont)
+    end
+  end
+end
+
+local function HideBadgeTooltip()
+  if GameTooltipTextLeft1 and GameTooltipTextLeft1.SetFontObject then
+    if previousBadgeTooltipTitleFontObject then
+      GameTooltipTextLeft1:SetFontObject(previousBadgeTooltipTitleFontObject)
+      previousBadgeTooltipTitleFontObject = nil
+    elseif GameTooltipHeaderText then
+      GameTooltipTextLeft1:SetFontObject(GameTooltipHeaderText)
+    elseif GameTooltipText then
+      GameTooltipTextLeft1:SetFontObject(GameTooltipText)
+    end
+  end
+  GameTooltip_Hide()
+end
+
+local function AddBadgeCategory(state, title, lines)
+  if type(lines) ~= "table" or #lines == 0 then return false end
+  state = state or {}
+  GameTooltip:AddLine(" ")
+  GameTooltip:AddLine(title, badgeCategoryColor[1], badgeCategoryColor[2], badgeCategoryColor[3])
+  for _, line in ipairs(lines) do
+    local text = type(line) == "table" and line.text or tostring(line)
+    local r = type(line) == "table" and line.r or badgeTextColor[1]
+    local g = type(line) == "table" and line.g or badgeTextColor[2]
+    local b = type(line) == "table" and line.b or badgeTextColor[3]
+    GameTooltip:AddLine("  - " .. tostring(text), r or badgeTextColor[1], g or badgeTextColor[2], b or badgeTextColor[3], true)
+  end
+  state.hasCategory = true
+  return true
+end
+
+local function AddImportWarningTooltipLines(rowData, tooltipState)
+  local warnings = rowData and rowData.importWarnings or {}
+  if type(warnings) ~= "table" then warnings = {} end
+  if #warnings == 0 then return false end
+
+  local lines = {}
+  for _, warningCode in ipairs(warnings) do
+    if warningCode == "MISSING_GEMS_OMITTED" then
+      lines[#lines + 1] = "Import has no gem specified."
+    elseif warningCode == "MISSING_EXTRA_SOCKET_GEM_OMITTED" then
+      lines[#lines + 1] = "Import omitted a gem for the extra socket."
+    elseif warningCode == "MISSING_ENCHANT_OMITTED" then
+      lines[#lines + 1] = "Import has no enchant specified."
+    elseif warningCode == "MISSING_UPGRADE_OMITTED" then
+      local currentUpgradeLevel = tonumber(rowData.equippedUpgradeLevel) or 0
+      local currentUpgradeMax = tonumber(rowData.equippedUpgradeMax) or 0
+      lines[#lines + 1] = ("Import has %d/%d upgrades, intentional?"):format(currentUpgradeLevel, currentUpgradeMax)
+    elseif warningCode == "UPGRADE_STEP_NOT_MAX_POTENTIAL" or warningCode == "UPGRADE_STEP_ZERO_POTENTIAL" then
+      local currentUpgradeMax = tonumber(rowData.equippedUpgradeMax) or 0
+      local expectedUpgradeStep = tonumber(rowData.expectedUpgradeStep) or 0
+      lines[#lines + 1] = ("Import has %d/%d upgrades, intentional?"):format(expectedUpgradeStep, currentUpgradeMax)
+    else
+      lines[#lines + 1] = "Import warning: " .. tostring(warningCode)
+    end
+  end
+  return AddBadgeCategory(tooltipState, "Import warnings", lines)
+end
+
+local function AddPurchaseTooltipLines(rowData, tooltipState)
+  local shopping = WSGH.UI and WSGH.UI.Shopping or nil
+  if not (shopping and shopping.GetRowPurchaseNeeds) then return false end
+
+  local needs = shopping.GetRowPurchaseNeeds(rowData)
+  if type(needs) ~= "table" or #needs == 0 then return false end
+
+  local lines = {}
+  for _, need in ipairs(needs) do
+    local itemName = GetItemName(need.itemId, "item") or ("item " .. tostring(need.itemId))
+    local count = tonumber(need.count) or 0
+    local bought = tonumber(need.bought) or 0
+    local text = itemName
+    if count > 1 then
+      text = text .. " x" .. tostring(count)
+    end
+    if bought > 0 then
+      text = text .. (" (bought %d/%d)"):format(bought, count)
+    end
+    lines[#lines + 1] = text
+  end
+
+  return AddBadgeCategory(tooltipState, "Purchases required", lines)
+end
+
+local function AddRowTaskTooltipLines(rowData, tooltipState)
+  local added = false
+
+  local function socketLabel(socketIndex)
+    socketIndex = tonumber(socketIndex) or 0
+    if socketIndex > 0 then
+      return "Socket " .. tostring(socketIndex)
+    end
+    return "Socket"
+  end
+
+  local function sortSockets(sockets)
+    table.sort(sockets, function(a, b)
+      return (tonumber(a) or 0) < (tonumber(b) or 0)
+    end)
+  end
+
+  local function addCategory(title, lines)
+    if AddBadgeCategory(tooltipState, title, lines) then
+      added = true
+    end
+  end
+
+  local function addSocketGroup(title, sockets, r, g, b)
+    if #sockets == 0 then return end
+    sortSockets(sockets)
+    local lines = {}
+    for _, socketIndex in ipairs(sockets) do
+      lines[#lines + 1] = { text = socketLabel(socketIndex), r = r, g = g, b = b }
+    end
+    addCategory(title, lines)
+  end
+
+  if not rowData then return false end
+
+  if rowData.rowStatus == "WRONG_ITEM" then
+    if rowData.hasExpectedInBags then
+      addCategory("Item", { "Equip expected item." })
+    else
+      addCategory("Item", { "Expected item not in bags." })
+    end
+  end
+
+  if rowData.socketHintText then
+    addCategory("Socket", { SocketHintDescription(rowData) })
+  end
+
+  local missingGemSockets = {}
+  local insertGemSockets = {}
+  local deferredGemSockets = {}
+  for _, task in ipairs(rowData.socketTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then
+      local socketIndex = tonumber(task.socketIndex) or 0
+      if task.status == WSGH.Const.STATUS_MISSING then
+        missingGemSockets[#missingGemSockets + 1] = socketIndex
+      else
+        insertGemSockets[#insertGemSockets + 1] = socketIndex
+      end
+    end
+  end
+
+  for _, task in ipairs(rowData.deferredSocketTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then
+      local socketIndex = tonumber(task.socketIndex) or 0
+      deferredGemSockets[#deferredGemSockets + 1] = socketIndex
+    end
+  end
+  addSocketGroup("Missing gems", missingGemSockets)
+  addSocketGroup("Insert gems", insertGemSockets)
+  addSocketGroup("Add extra socket before gem", deferredGemSockets)
+
+  local enchantLines = {}
+  for _, task in ipairs(rowData.enchantTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then
+      local spellName = GetSpellName(task.wantEnchantId, "enchant") or "expected enchant"
+      if task.type == "APPLY_TINKER" then
+        enchantLines[#enchantLines + 1] = "Apply tinker: " .. spellName .. "."
+      elseif task.status == WSGH.Const.STATUS_MISSING then
+        local itemName = GetItemName(task.wantEnchantItemId, "item") or "required enchant item"
+        enchantLines[#enchantLines + 1] = "Missing enchant item: " .. itemName .. "."
+      elseif task.manualOnly then
+        enchantLines[#enchantLines + 1] = "Apply enchant manually: " .. spellName .. "."
+      else
+        enchantLines[#enchantLines + 1] = "Apply enchant: " .. spellName .. "."
+      end
+    end
+  end
+  addCategory("Enchanting", enchantLines)
+
+  local pendingUpgradeCount = 0
+  local firstUpgradeTask = nil
+  for _, task in ipairs(rowData.upgradeTasks or {}) do
+    if task.status ~= WSGH.Const.STATUS_OK then
+      pendingUpgradeCount = pendingUpgradeCount + 1
+      if not firstUpgradeTask then firstUpgradeTask = task end
+    end
+  end
+  if pendingUpgradeCount > 0 then
+    local currentStep = tonumber(rowData.equippedUpgradeLevel) or tonumber(firstUpgradeTask and firstUpgradeTask.haveUpgradeStep) or 0
+    local targetStep = tonumber(firstUpgradeTask and firstUpgradeTask.targetUpgradeStep) or tonumber(rowData.expectedUpgradeStep) or 0
+    local maxStep = tonumber(rowData.equippedUpgradeMax) or tonumber(firstUpgradeTask and firstUpgradeTask.upgradeMax) or 0
+    if maxStep <= 0 then maxStep = math.max(2, targetStep) end
+    addCategory("Upgrades", { ("Upgrade item: %d/%d -> %d/%d."):format(currentStep, maxStep, targetStep, maxStep) })
+  end
+
+  return added
+end
+
+local function ShowRowStatusTooltip(frame, rowData)
+  GameTooltip:SetOwner(frame, "ANCHOR_LEFT")
+  local icon = RowBadgeIcon(rowData)
+  if icon == WSGH.Const.ICON_QUESTION then
+    SetBadgeTooltipTitle("Review needed", 1, 0.82, 0.2)
+  elseif icon == WSGH.Const.ICON_READY then
+    SetBadgeTooltipTitle("No actions remaining", 0.35, 1, 0.35)
+    GameTooltip:Show()
+    return
+  else
+    SetBadgeTooltipTitle("Needs work", 1, 0.25, 0.25)
+  end
+
+  local tooltipState = {}
+  local addedWarnings = AddImportWarningTooltipLines(rowData, tooltipState)
+  local addedPurchases = AddPurchaseTooltipLines(rowData, tooltipState)
+  local addedTasks = AddRowTaskTooltipLines(rowData, tooltipState)
+  if not addedWarnings and not addedPurchases and not addedTasks then
+    GameTooltip:AddLine("No remaining actions.", 1, 1, 1, true)
+  end
+  GameTooltip:Show()
+end
+
 function WSGH.UI.Rows.Create(parent)
   local rowHeight = WSGH.Const.UI.rowHeight
   local socketSize = WSGH.Const.UI.socketSize
@@ -177,6 +439,15 @@ function WSGH.UI.Rows.Create(parent)
   rowFrame.icon = rowFrame:CreateTexture(nil, "ARTWORK")
   rowFrame.icon:SetSize(28, 28)
   rowFrame.icon:SetPoint("LEFT", 6, 0)
+
+  local badgeSize = WSGH.Const.UI.rowStatusBadgeSize
+  local badgeOffset = WSGH.Const.UI.rowStatusBadgeOffset or { x = 0, y = 0 }
+  rowFrame.statusBadge = CreateFrame("Button", nil, rowFrame)
+  rowFrame.statusBadge:SetSize(badgeSize, badgeSize)
+  rowFrame.statusBadge:SetPoint("BOTTOMRIGHT", rowFrame.icon, "BOTTOMRIGHT", badgeOffset.x or 0, badgeOffset.y or 0)
+  rowFrame.statusBadge:SetFrameLevel((rowFrame:GetFrameLevel() or 0) + 5)
+  rowFrame.statusBadge.icon = rowFrame.statusBadge:CreateTexture(nil, "OVERLAY")
+  rowFrame.statusBadge.icon:SetAllPoints()
 
   rowFrame.title = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   rowFrame.title:SetPoint("LEFT", rowFrame.icon, "RIGHT", 8, 6)
@@ -300,15 +571,26 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
     end
   end)
   rowFrame.icon:SetScript("OnLeave", GameTooltip_Hide)
+  if rowFrame.statusBadge then
+    local badgeIcon = RowBadgeIcon(rowData)
+    local badgeSize = WSGH.Const.UI.rowStatusBadgeSize
+    if badgeIcon == WSGH.Const.ICON_READY then
+      badgeSize = WSGH.Const.UI.rowStatusBadgeCompleteSize or badgeSize
+    end
+    rowFrame.statusBadge:SetSize(badgeSize, badgeSize)
+    rowFrame.statusBadge:SetFrameLevel((rowFrame:GetFrameLevel() or 0) + 5)
+    rowFrame.statusBadge.icon:SetTexture(badgeIcon)
+    rowFrame.statusBadge:SetScript("OnEnter", function(self)
+      ShowRowStatusTooltip(self, rowData)
+    end)
+    rowFrame.statusBadge:SetScript("OnLeave", HideBadgeTooltip)
+    rowFrame.statusBadge:Show()
+  end
 
   local hasSocketWork = false
   local hasEnchantWork = false
   local hasTinkerWork = false
   local hasUpgradeWork = false
-  local pendingUpgradeCount = 0
-  local hasManualOnlyEnchant = false
-  local hasManualEnchantWork = false
-  local hasManualTinkerWork = false
   for _, task in ipairs(rowData.socketTasks or {}) do
     if task.status ~= WSGH.Const.STATUS_OK then
       hasSocketWork = true
@@ -322,23 +604,13 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       else
         hasEnchantWork = true
       end
-      if task.manualOnly then
-        hasManualOnlyEnchant = true
-        if task.type == "APPLY_TINKER" then
-          hasManualTinkerWork = true
-        else
-          hasManualEnchantWork = true
-        end
-      end
     end
   end
   for _, task in ipairs(rowData.upgradeTasks or {}) do
     if task.status ~= WSGH.Const.STATUS_OK then
       hasUpgradeWork = true
-      pendingUpgradeCount = pendingUpgradeCount + 1
     end
   end
-  local upgradeNoun = WSGH.Util.Pluralize(pendingUpgradeCount, "upgrade")
   local priority = WSGH.UI and WSGH.UI.GetRowActionPriority and WSGH.UI.GetRowActionPriority(rowData) or nil
   local hasPrioritySocket = priority and priority.hasSocketWork or hasSocketWork
   local hasPriorityAnyEnchant = priority and priority.hasEnchantWork or (hasEnchantWork or hasTinkerWork)
@@ -353,61 +625,10 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
     rowFrame.title:SetTextColor(1, 0.82, 0)
   end
 
-  local statusText = rowData.rowStatus
-  if rowData.rowStatus == "WRONG_ITEM" then
-    if rowData.hasExpectedInBags then
-      statusText = "Expected item ready to equip"
-    else
-      statusText = "Expected item not in bags"
-    end
-  elseif rowData.rowStatus == "OK" then
-    statusText = "OK"
-  else
-    local needsEnchantOrTinker = hasEnchantWork or hasTinkerWork
-    if hasSocketWork and needsEnchantOrTinker then
-      if hasTinkerWork and not hasEnchantWork then
-        if hasUpgradeWork then
-          statusText = ("Needs gems, tinker, and %s"):format(upgradeNoun)
-        else
-          statusText = "Needs gems and tinker"
-        end
-      elseif hasEnchantWork and not hasTinkerWork then
-        if hasUpgradeWork then
-          statusText = ("Needs gems, enchant, and %s"):format(upgradeNoun)
-        else
-          statusText = "Needs gems and enchant"
-        end
-      else
-        if hasUpgradeWork then
-          statusText = ("Needs gems, enchant, tinker, and %s"):format(upgradeNoun)
-        else
-          statusText = "Needs gems and enchant, tinker"
-        end
-      end
-    elseif hasSocketWork and hasUpgradeWork then
-      statusText = ("Needs gems and %s"):format(upgradeNoun)
-    elseif hasTinkerWork and not hasEnchantWork then
-      statusText = "Needs tinker"
-    elseif hasEnchantWork then
-      statusText = "Needs enchant"
-    elseif hasUpgradeWork then
-      statusText = ("Needs %s"):format(upgradeNoun)
-    elseif hasSocketWork then
-      statusText = "Needs gems"
-    else
-      statusText = "Needs work"
-    end
-  end
-  if rowData.socketHintText then
-    statusText = SocketHintDescription(rowData)
-  end
-
   local importWarnings = rowData.importWarnings or {}
   local hasGemOmissionWarning = false
   local hasExtraSocketGemOmissionWarning = false
   local hasEnchantOmissionWarning = false
-  local hasMissingUpgradeOmissionWarning = false
-  local hasUpgradeNotMaxPotentialWarning = false
   local currentEnchantId = tonumber(rowData.currentEnchantId) or 0
   local currentGemCount = tonumber(rowData.currentGemCount) or 0
   local currentGemIds = type(rowData.currentGemIds) == "table" and rowData.currentGemIds or {}
@@ -419,33 +640,19 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       hasExtraSocketGemOmissionWarning = true
     elseif warningCode == "MISSING_ENCHANT_OMITTED" then
       hasEnchantOmissionWarning = true
-    elseif warningCode == "MISSING_UPGRADE_OMITTED" then
-      hasMissingUpgradeOmissionWarning = true
-    elseif warningCode == "UPGRADE_STEP_NOT_MAX_POTENTIAL" or warningCode == "UPGRADE_STEP_ZERO_POTENTIAL" then
-      hasUpgradeNotMaxPotentialWarning = true
     end
   end
 
-  if hasMissingUpgradeOmissionWarning or hasUpgradeNotMaxPotentialWarning then
-    local currentUpgradeLevel = tonumber(rowData.equippedUpgradeLevel) or 0
-    local currentUpgradeMax = tonumber(rowData.equippedUpgradeMax) or 0
-    local expectedUpgradeStep = tonumber(rowData.expectedUpgradeStep) or 0
-    local shownUpgradeLevel = hasMissingUpgradeOmissionWarning and currentUpgradeLevel or expectedUpgradeStep
-    local warningSuffix = ("Import has %d/%d upgrades, intentional?"):format(
-      shownUpgradeLevel,
-      currentUpgradeMax
-    )
-
-    -- Lowest-priority warning: only show when no higher-priority action is needed.
-    if rowData.rowStatus == "OK" and not rowData.socketHintText then
-      statusText = warningSuffix
-      rowFrame.subtitle:SetTextColor(1, 0.82, 0.2)
-    else
-      rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
-    end
+  local remainingTaskCount = CountRowRemainingTasks(rowData)
+  local statusText
+  if remainingTaskCount == 0 then
+    statusText = "No tasks left"
+  elseif remainingTaskCount == 1 then
+    statusText = "1 task left"
   else
-    rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
+    statusText = ("%d tasks left"):format(remainingTaskCount)
   end
+  rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
   rowFrame.subtitle:SetText(statusText)
 
   local enchantDisplays = rowData.enchantDisplays or {}

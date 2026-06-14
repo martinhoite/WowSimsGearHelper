@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.0] - 13 Jun, 2026
+
+### Added
+- Added row status badges that summarize import warnings, purchases, sockets, gems, and upgrade tasks in a tooltip.
+- Added Blacksmithing socket guidance that opens Blacksmithing and selects relevant socket recipe.
+- Added Enchanting ring guidance that opens Enchanting and selects learned ring enchant recipes.
+
+### Changed
+- Simplified row subtitle text to a remaining-task count and moved detailed task lists into the badge tooltip.
+- Character slot highlights for row actions now use the glow without the letter overlay.
+- Profession recipe guidance now reports immediately when a loaded recipe list does not include the requested recipe.
+
+### Fixed
+- Starting a new row action now clears previous guidance highlights so socket and tinker targets do not overlap.
+- First-pass bag and character highlight glows now wait for stable target sizing before starting.
+- Shopping purchase tracking no longer treats mailbox loot as purchases and reconciles bought counts once auction wins are received.
+- Shopping list sorting now handles currency entries alongside normal item entries.
+- Closing the addon window now fully disables runtime listeners so entering combat later no longer prints the combat-close notice.
+
 ## [1.0.0] - 04 Jun, 2026
 
 ### Snapshot

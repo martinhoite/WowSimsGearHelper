@@ -440,8 +440,7 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
     elseif itemLevel > 0 and itemLevel <= 416 then
       itemId = 55054 -- Ebonsteel Belt Buckle
     end
-    local name = GetItemInfo(itemId) or "Belt buckle"
-    return { text = "Add socket: " .. name, itemId = itemId, missing = missingSockets }
+    return { text = "Add socket: Belt buckle", itemId = itemId, missing = missingSockets }
   end
 
   -- Blacksmithing extra sockets (bracer/gloves).
@@ -451,10 +450,9 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
       return nil
     end
 
-    local requiredSkill = (itemLevel > 416) and 550 or 400
     local fluxPerSocket = 4
     local fluxItemId = 3466 -- Strong Flux (vendor)
-    local text = ("Add socket: Blacksmithing (%d skill)"):format(requiredSkill)
+    local text = "Add socket: Blacksmithing"
     return {
       text = text,
       itemId = nil,
