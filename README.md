@@ -2,7 +2,7 @@ WowSims Gear Helper
 <!-- ![Alpha](https://img.shields.io/badge/alpha-0.1.2--alpha.2-blue) -->
 ![Alpha](https://img.shields.io/badge/alpha-none-lightgrey)
 ![Beta](https://img.shields.io/badge/beta-none-lightgrey)
-![Release](https://img.shields.io/badge/release-1.0.0-success)
+![Release](https://img.shields.io/badge/release-1.1.0-success)
 ===================
 
 <img src="WowSimsGearHelper_icon.png" alt="WowSims Gear Helper icon" width="128">
@@ -57,6 +57,7 @@ Please use GitHub Issues and include as much context as possible.
 
 Limitations
 -----------
+- At this time I only support the English client and language. If Blizzard decides to continue into Warlords of Draenor, I'll likely extend with additional locale support.
 - Reforging is not handled. Use ReforgeLite Classic: <https://www.curseforge.com/wow/addons/reforgelite-classic>, an integration is planned to work with ReforgeLite from WSGH directly.
 - The addon follows the data you import and attempts to flag issues, but you should still verify the result yourself.
 
