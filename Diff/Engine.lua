@@ -392,6 +392,42 @@ local function BuildUpgradeTasksForSlot(planSlot, equippedSlot)
   return tasks
 end
 
+local function BuildReforgeTasksForSlot(planSlot, equippedSlot)
+  local tasks = {}
+
+  local expectedItemId = tonumber(planSlot.expectedItemId) or 0
+  local equippedItemId = tonumber(equippedSlot.itemId) or 0
+  if expectedItemId == 0 or equippedItemId ~= expectedItemId then
+    return tasks
+  end
+  if planSlot.importHasReforgeField ~= true then
+    return tasks
+  end
+
+  local expectedReforgeId = tonumber(planSlot.expectedReforgeId) or 0
+  local equippedReforgeId = tonumber(equippedSlot.reforgeId) or 0
+  if expectedReforgeId == equippedReforgeId then
+    return tasks
+  end
+  local wantReforgeText = nil
+  if WSGH.Integrations and WSGH.Integrations.ReforgeLite and WSGH.Integrations.ReforgeLite.GetReforgeDescription then
+    wantReforgeText = WSGH.Integrations.ReforgeLite.GetReforgeDescription(expectedReforgeId, planSlot.slotId)
+  end
+
+  tasks[#tasks + 1] = {
+    type = "REFORGE_ITEM",
+    slotId = planSlot.slotId,
+    slotKey = planSlot.slotKey,
+    itemId = equippedItemId,
+    wantReforgeId = expectedReforgeId,
+    haveReforgeId = equippedReforgeId,
+    wantReforgeText = wantReforgeText,
+    status = WSGH.Const.STATUS_WRONG,
+  }
+
+  return tasks
+end
+
 local function ComputeSocketCount(slotMeta, planSlot, equippedSlot)
   local count = tonumber(equippedSlot.socketCount) or 0
   local maxIndex = count
@@ -470,7 +506,7 @@ local function SocketHintForSlot(slotMeta, planSlot, equippedSlot, computedSocke
   return { text = ("Add an extra socket (plan has %d, item has %d)"):format(maxExpected, physicalSockets), itemId = nil, missing = missingSockets }
 end
 
-local function ComputeRowStatus(planSlot, equippedSlot, socketTasks, enchantTasks, upgradeTasks)
+local function ComputeRowStatus(planSlot, equippedSlot, socketTasks, enchantTasks, upgradeTasks, reforgeTasks)
   local expectedItemId = tonumber(planSlot.expectedItemId) or 0
   local equippedItemId = tonumber(equippedSlot.itemId) or 0
 
@@ -491,6 +527,12 @@ local function ComputeRowStatus(planSlot, equippedSlot, socketTasks, enchantTask
   end
 
   for _, t in ipairs(upgradeTasks or {}) do
+    if t.status ~= WSGH.Const.STATUS_OK then
+      return "NEEDS_WORK"
+    end
+  end
+
+  for _, t in ipairs(reforgeTasks or {}) do
     if t.status ~= WSGH.Const.STATUS_OK then
       return "NEEDS_WORK"
     end
@@ -591,7 +633,8 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
       local socketTasks, deferredSocketTasks = BuildSocketTasksForSlot(slotMeta, planSlot, eqSlot, bagIndex)
       local enchantTasks = BuildEnchantTasksForSlot(planSlot, eqSlot, bagIndex)
       local upgradeTasks = BuildUpgradeTasksForSlot(planSlot, eqSlot)
-      local rowStatus = ComputeRowStatus(planSlot, eqSlot, socketTasks, enchantTasks, upgradeTasks)
+      local reforgeTasks = BuildReforgeTasksForSlot(planSlot, eqSlot)
+      local rowStatus = ComputeRowStatus(planSlot, eqSlot, socketTasks, enchantTasks, upgradeTasks, reforgeTasks)
       local nextTask = NextSocketTask(socketTasks)
       local nextEnchantTask = NextEnchantTask(enchantTasks)
       local computedSocketCount = ComputeSocketCount(slotMeta, planSlot, eqSlot)
@@ -613,6 +656,11 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
         end
       end
       for _, t in ipairs(upgradeTasks) do
+        if t.status ~= WSGH.Const.STATUS_OK then
+          result.tasks[#result.tasks + 1] = t
+        end
+      end
+      for _, t in ipairs(reforgeTasks) do
         if t.status ~= WSGH.Const.STATUS_OK then
           result.tasks[#result.tasks + 1] = t
         end
@@ -651,6 +699,9 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
         expectedUpgradeStep = GetExpectedUpgradeStep(planSlot),
         equippedUpgradeLevel = tonumber(eqSlot.upgradeLevel) or 0,
         equippedUpgradeMax = tonumber(eqSlot.upgradeMax) or 0,
+        reforgeTasks = reforgeTasks,
+        expectedReforgeId = tonumber(planSlot.expectedReforgeId) or 0,
+        equippedReforgeId = tonumber(eqSlot.reforgeId) or 0,
         socketTasks = socketTasks,
         deferredSocketTasks = deferredSocketTasks,
         nextTask = nextTask,
@@ -732,6 +783,16 @@ function WSGH.Debug.DumpDiffRow(slotId)
             tostring(t.haveUpgradeStep),
             tostring(t.wantUpgradeStep),
             tostring(t.targetUpgradeStep),
+            tostring(t.status)
+          ))
+        end
+      end
+      if row.reforgeTasks then
+        for _, t in ipairs(row.reforgeTasks) do
+          WSGH.Util.Print(("Reforge task: have=%s want=%s text=%s status=%s"):format(
+            tostring(t.haveReforgeId),
+            tostring(t.wantReforgeId),
+            tostring(t.wantReforgeText),
             tostring(t.status)
           ))
         end
