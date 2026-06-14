@@ -35,8 +35,8 @@ local function PopulateGuide(parent, cursorY, width)
   _, cursorY = AddTextBlock(parent, cursorY, "Guide", "GameFontNormalLarge", width, 0, 8, { 1, 0.82, 0 })
   _, cursorY = AddTextBlock(parent, cursorY, "Optional: use the WowSims exporter addon if you want to move your current character into WowSims first. If your target setup is already ready in WowSims, skip that step.", "GameFontHighlightSmall", width, 0, 8, textColor)
   _, cursorY = AddTextBlock(parent, cursorY, "1. Make the gear changes you want in WowSims.", "GameFontHighlightSmall", width, 0, 4, textColor)
-  _, cursorY = AddTextBlock(parent, cursorY, "2. In WowSims, click Export -> JSON.", "GameFontHighlightSmall", width, 0, 4, textColor)
-  _, cursorY = AddTextBlock(parent, cursorY, "3. In-game, click Import and paste the JSON export.", "GameFontHighlightSmall", width, 0, 4, textColor)
+  _, cursorY = AddTextBlock(parent, cursorY, "2. In WowSims, use the ReforgeLite export button, or click Export -> JSON.", "GameFontHighlightSmall", width, 0, 4, textColor)
+  _, cursorY = AddTextBlock(parent, cursorY, "3. In-game, click Import and paste that export.", "GameFontHighlightSmall", width, 0, 4, textColor)
   _, cursorY = AddTextBlock(parent, cursorY, "4. Review the plan by hovering item badges, socket icons, and shopping entries.", "GameFontHighlightSmall", width, 0, 4, textColor)
   _, cursorY = AddTextBlock(parent, cursorY, "4a. Double-check the plan before you buy anything.", "GameFontHighlightSmall", width, 0, 4, textColor)
   _, cursorY = AddTextBlock(parent, cursorY, "5. Buy what you still need from the shopping list. Auction House search buttons use the default Auction House only.", "GameFontHighlightSmall", width, 0, 4, textColor)
@@ -45,12 +45,12 @@ local function PopulateGuide(parent, cursorY, width)
 
   _, cursorY = AddTextBlock(parent, cursorY, "Settings and reminder", "GameFontNormal", width, 0, 6, { 1, 0.82, 0 })
   _, cursorY = AddTextBlock(parent, cursorY, "Use the Settings button if you want to adjust the addon's preferences.", "GameFontHighlightSmall", width, 0, 4)
-  _, cursorY = AddTextBlock(parent, cursorY, "If your import includes reforges, the addon can show a reminder below the shopping list so you can handle those manually.", "GameFontHighlightSmall", width, 0, 8)
+  _, cursorY = AddTextBlock(parent, cursorY, "If ReforgeLite Classic is enabled, successful imports can sync the same export into ReforgeLite. You can turn that off in Settings.", "GameFontHighlightSmall", width, 0, 8)
 
   _, cursorY = AddTextBlock(parent, cursorY, "Limits and expectations", "GameFontNormal", width, 0, 6, { 1, 0.82, 0 })
   _, cursorY = AddTextBlock(parent, cursorY, "The addon follows the imported data literally. Verify the result yourself before you buy or apply anything.", "GameFontNormalSmall", width, 0, 6, noteColor)
-  _, cursorY = AddTextBlock(parent, cursorY, "The addon guides gear, gem, enchant, and shopping changes. It does not automate those actions for you.", "GameFontHighlightSmall", width, 0, 4)
-  _, cursorY = AddTextBlock(parent, cursorY, "Reforging is not handled by the addon. Use WowSims' Copy to Reforge Lite buttons with ReforgeLite Classic, then export/import again if you want to confirm the final setup still matches WowSims.", "GameFontHighlightSmall", width, 0, 8)
+  _, cursorY = AddTextBlock(parent, cursorY, "The addon guides gear, gem, enchant, upgrade, and reforge changes. It does not automate those actions for you.", "GameFontHighlightSmall", width, 0, 4)
+  _, cursorY = AddTextBlock(parent, cursorY, "Reforging is handed off to ReforgeLite Classic when present. WSGH will catch the updates as they happen and update the UI.", "GameFontHighlightSmall", width, 0, 8)
 
   return cursorY
 end

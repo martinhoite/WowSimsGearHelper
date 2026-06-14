@@ -81,7 +81,7 @@ function WSGH.UI.EnsureImportDialog()
 
   local help = dialog:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   help:SetPoint("TOPLEFT", 18, -44)
-  help:SetText("Enter WowSims JSON Export")
+  help:SetText("Paste WowSims JSON or ReforgeLite export")
   help:SetTextColor(1, 0.82, 0)
 
   local inputWrap = CreateFrame("Frame", nil, dialog, "BackdropTemplate")
@@ -222,7 +222,7 @@ function WSGH.UI.ImportFromDialog()
     return
   end
 
-  local ok, derr = WSGH.UI.ApplyImportedPlan and WSGH.UI.ApplyImportedPlan(plan, "manual")
+  local ok, derr = WSGH.UI.ApplyImportedPlan and WSGH.UI.ApplyImportedPlan(plan, "manual", text)
   if not ok then
     WSGH.Util.Print("Diff failed: " .. tostring(derr))
     if WSGH.UI.importDialog then WSGH.UI.importDialog.autoRunning = false end
