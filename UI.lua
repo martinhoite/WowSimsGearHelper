@@ -18,13 +18,21 @@ local function RestorePosition(frame)
   frame:SetPoint(ui.point, UIParent, ui.relativePoint, ui.x, ui.y)
 end
 
+local function IsFrameVisible(frame)
+  if not frame then return false end
+  if frame.IsVisible then
+    return frame:IsVisible()
+  end
+  return frame:IsShown()
+end
+
 local function CloseUIForCombat()
   if not (
-    (WSGH.UI.frame and WSGH.UI.frame:IsShown())
-    or (WSGH.UI.shoppingFrame and WSGH.UI.shoppingFrame:IsShown())
-    or (WSGH.UI.shoppingReminder and WSGH.UI.shoppingReminder:IsShown())
-    or (WSGH.UI.importDialog and WSGH.UI.importDialog:IsShown())
-    or (WSGH.UI.Help and WSGH.UI.Help.dialog and WSGH.UI.Help.dialog:IsShown())
+    IsFrameVisible(WSGH.UI.frame)
+    or IsFrameVisible(WSGH.UI.shoppingFrame)
+    or IsFrameVisible(WSGH.UI.shoppingReminder)
+    or IsFrameVisible(WSGH.UI.importDialog)
+    or IsFrameVisible(WSGH.UI.Help and WSGH.UI.Help.dialog)
   ) then
     return
   end
@@ -43,6 +51,24 @@ local Guide = WSGH.UI.Guide
 Guide.currentAction = Guide.currentAction or nil
 Guide.tinkerSelectionRequestId = tonumber(Guide.tinkerSelectionRequestId) or 0
 
+local function ClearHighlights()
+  if not WSGH.UI.Highlight then return end
+  if WSGH.UI.Highlight.ClearAll then
+    WSGH.UI.Highlight.ClearAll()
+    return
+  end
+
+  if WSGH.UI.Highlight.SetTarget then
+    WSGH.UI.Highlight.SetTarget(nil, nil)
+  end
+  if WSGH.UI.Highlight.SetEnchantTarget then
+    WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
+  end
+  if WSGH.UI.Highlight.SetSocketHintTarget then
+    WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
+  end
+end
+
 local function ResetRuntimeState()
   EnsureUIState()
   WSGH.State.plan = nil
@@ -55,21 +81,7 @@ local function ResetRuntimeState()
   WSGH.UI.pendingPurchasesByName = {}
   WSGH.UI.reforgeReminder = nil
 
-  if WSGH.UI.Highlight then
-    if WSGH.UI.Highlight.ClearAll then
-      WSGH.UI.Highlight.ClearAll()
-    else
-      if WSGH.UI.Highlight.SetTarget then
-        WSGH.UI.Highlight.SetTarget(nil, nil)
-      end
-      if WSGH.UI.Highlight.SetEnchantTarget then
-        WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
-      end
-      if WSGH.UI.Highlight.SetSocketHintTarget then
-        WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
-      end
-    end
-  end
+  ClearHighlights()
 
   if WSGH.UI.scroll then
     FauxScrollFrame_SetOffset(WSGH.UI.scroll, 0)
@@ -128,6 +140,8 @@ end
 local HasEquippedSnapshotChanged
 local HasUpgradeSnapshotChanged
 local BuildDiffAndRender
+local RegisterUIEvents
+local UnregisterUIEvents
 
 local function RuntimePollUpdate(self, elapsed)
   self.pollElapsed = (tonumber(self.pollElapsed) or 0) + (tonumber(elapsed) or 0)
@@ -480,6 +494,28 @@ local function CloseProfessionWindowIfOpen(professionDefinition)
   if ProfessionsFrame and ProfessionsFrame:IsShown() then
     ProfessionsFrame:Hide()
   end
+end
+
+local function CleanupAfterHide()
+  local runtimeWasActive = WSGH.UI.runtimeActive == true
+  WSGH.UI.runtimeActive = false
+
+  if runtimeWasActive then
+    Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
+  end
+
+  if UnregisterUIEvents then
+    UnregisterUIEvents()
+  end
+  SetRuntimePollingEnabled(false)
+  if WSGH.UI.Shopping and WSGH.UI.Shopping.DisableRuntimeListeners then
+    WSGH.UI.Shopping.DisableRuntimeListeners()
+  end
+  SetAuxiliaryFramesShown(false)
+  if WSGH.DB and WSGH.DB.profile and WSGH.DB.profile.ui then
+    WSGH.DB.profile.ui.shown = false
+  end
+  ClearHighlights()
 end
 
 local function CloseEngineeringWindowIfOpen()
@@ -1097,8 +1133,6 @@ end
 local BuildPlanFromEquipped
 local BuildFromEquippedAndRender
 local TryLoadSavedImport = function() end
-local RegisterUIEvents
-local UnregisterUIEvents
 local function IsAuctionHouseOpen()
   if AuctionHouseFrame and AuctionHouseFrame:IsShown() then return true end
   if AuctionFrame and AuctionFrame:IsShown() then return true end
@@ -1428,11 +1462,7 @@ function WSGH.UI.Init()
     self:StopMovingOrSizing()
     SavePosition(self)
   end)
-  mainFrame:HookScript("OnHide", function()
-    if WSGH.UI.Highlight and WSGH.UI.Highlight.ClearAll then
-      WSGH.UI.Highlight.ClearAll()
-    end
-  end)
+  mainFrame:HookScript("OnHide", CleanupAfterHide)
   
   table.insert(UISpecialFrames, "WowSimsGearHelperFrame")
 
@@ -1916,6 +1946,7 @@ function WSGH.UI.Show()
   if WSGH.UI.Shopping and WSGH.UI.Shopping.EnableRuntimeListeners then
     WSGH.UI.Shopping.EnableRuntimeListeners()
   end
+  WSGH.UI.runtimeActive = true
   WSGH.UI.frame:Show()
   SetAuxiliaryFramesShown(true)
   WSGH.DB.profile.ui.shown = true
@@ -1926,30 +1957,8 @@ end
 
 function WSGH.UI.Hide()
   if not WSGH.UI.frame then return end
-  Guide.tinkerSelectionRequestId = (tonumber(Guide.tinkerSelectionRequestId) or 0) + 1
-  UnregisterUIEvents()
-  SetRuntimePollingEnabled(false)
-  if WSGH.UI.Shopping and WSGH.UI.Shopping.DisableRuntimeListeners then
-    WSGH.UI.Shopping.DisableRuntimeListeners()
-  end
-  SetAuxiliaryFramesShown(false)
   WSGH.UI.frame:Hide()
-  WSGH.DB.profile.ui.shown = false
-  if WSGH.UI.Highlight then
-    if WSGH.UI.Highlight.ClearAll then
-      WSGH.UI.Highlight.ClearAll()
-    else
-      if WSGH.UI.Highlight.SetTarget then
-        WSGH.UI.Highlight.SetTarget(nil, nil)
-      end
-      if WSGH.UI.Highlight.SetEnchantTarget then
-        WSGH.UI.Highlight.SetEnchantTarget(nil, nil, nil)
-      end
-      if WSGH.UI.Highlight.SetSocketHintTarget then
-        WSGH.UI.Highlight.SetSocketHintTarget(nil, nil, nil)
-      end
-    end
-  end
+  CleanupAfterHide()
 end
 
 function WSGH.UI.Toggle()
