@@ -88,7 +88,7 @@ local function CreateTaskPrioritySection(parent, anchor)
   note:SetHeight(tonumber(layout.noteHeight) or 28)
   note:SetJustifyH("LEFT")
   note:SetWordWrap(true)
-  note:SetText("Drag rows to set the task order.")
+  note:SetText("Drag rows to set the task order.\nIf the window is already open, you'll need to reopen it to see the changes.")
 
   local taskTypeLookup = CreateTaskTypeLookup()
   local rows = {}

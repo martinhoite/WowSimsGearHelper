@@ -285,11 +285,11 @@ WSGH.Const.UI = {
       rowHeight = 28,
       rowGap = 4,
       labelGap = 4,
-      rowTopOffset = -44,
+      rowTopOffset = -58,
       rankWidth = 24,
       rankOffsetX = 8,
       labelOffsetX = 8,
-      noteHeight = 18,
+      noteHeight = 32,
       resetButton = { width = 64, height = 20, yOffset = 2 },
       backdrop = {
         tileSize = 16,

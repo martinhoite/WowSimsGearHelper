@@ -93,6 +93,21 @@ function WSGH.Util.NormalizeTaskPriorityOrder(order)
   return normalized
 end
 
+function WSGH.Util.GetTaskPriorityOrder()
+  local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
+  return WSGH.Util.NormalizeTaskPriorityOrder(preferences and preferences.taskPriorityOrder or nil)
+end
+
+function WSGH.Util.GetTaskPriorityRank(taskType)
+  local order = WSGH.Util.GetTaskPriorityOrder()
+  for index, key in ipairs(order) do
+    if key == taskType then
+      return index
+    end
+  end
+  return #order + 1
+end
+
 function WSGH.Util.Print(msg)
   DEFAULT_CHAT_FRAME:AddMessage(("|cff33ff99WSGH|r: %s"):format(tostring(msg)))
 end
