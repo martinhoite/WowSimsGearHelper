@@ -323,6 +323,15 @@ end
 
 local function AddRowTaskTooltipLines(rowData, tooltipState)
   local added = false
+  local taskCategories = {}
+  local categorySequence = 0
+
+  local function getTaskPriorityRank(taskType)
+    if WSGH.Util and WSGH.Util.GetTaskPriorityRank then
+      return WSGH.Util.GetTaskPriorityRank(taskType)
+    end
+    return 999
+  end
 
   local function socketLabel(socketIndex)
     socketIndex = tonumber(socketIndex) or 0
@@ -344,6 +353,31 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
     end
   end
 
+  local function addTaskCategory(taskType, title, lines)
+    if type(lines) ~= "table" or #lines == 0 then return end
+    categorySequence = categorySequence + 1
+    taskCategories[#taskCategories + 1] = {
+      taskType = taskType,
+      title = title,
+      lines = lines,
+      rank = getTaskPriorityRank(taskType),
+      sequence = categorySequence,
+    }
+  end
+
+  local function renderTaskCategories()
+    table.sort(taskCategories, function(a, b)
+      if a.rank ~= b.rank then
+        return a.rank < b.rank
+      end
+      return a.sequence < b.sequence
+    end)
+
+    for _, category in ipairs(taskCategories) do
+      addCategory(category.title, category.lines)
+    end
+  end
+
   local function addSocketGroup(title, sockets, r, g, b)
     if #sockets == 0 then return end
     sortSockets(sockets)
@@ -351,7 +385,7 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
     for _, socketIndex in ipairs(sockets) do
       lines[#lines + 1] = { text = socketLabel(socketIndex), r = r, g = g, b = b }
     end
-    addCategory(title, lines)
+    addTaskCategory("SOCKET_GEM", title, lines)
   end
 
   if not rowData then return false end
@@ -365,7 +399,7 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
   end
 
   if rowData.socketHintText then
-    addCategory("Socket", { SocketHintDescription(rowData) })
+    addTaskCategory("ADD_SOCKET", "Add socket", { SocketHintDescription(rowData) })
   end
 
   local missingGemSockets = {}
@@ -390,14 +424,22 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
   end
   addSocketGroup("Missing gems", missingGemSockets)
   addSocketGroup("Insert gems", insertGemSockets)
-  addSocketGroup("Add extra socket before gem", deferredGemSockets)
+  if #deferredGemSockets > 0 then
+    sortSockets(deferredGemSockets)
+    local deferredLines = {}
+    for _, socketIndex in ipairs(deferredGemSockets) do
+      deferredLines[#deferredLines + 1] = { text = socketLabel(socketIndex) }
+    end
+    addTaskCategory("ADD_SOCKET", "Add extra socket before gem", deferredLines)
+  end
 
   local enchantLines = {}
+  local tinkerLines = {}
   for _, task in ipairs(rowData.enchantTasks or {}) do
     if task.status ~= WSGH.Const.STATUS_OK then
       local spellName = GetSpellName(task.wantEnchantId, "enchant") or "expected enchant"
       if task.type == "APPLY_TINKER" then
-        enchantLines[#enchantLines + 1] = "Apply tinker: " .. spellName .. "."
+        tinkerLines[#tinkerLines + 1] = "Apply tinker: " .. spellName .. "."
       elseif task.status == WSGH.Const.STATUS_MISSING then
         local itemName = GetItemName(task.wantEnchantItemId, "item") or "required enchant item"
         enchantLines[#enchantLines + 1] = "Missing enchant item: " .. itemName .. "."
@@ -408,7 +450,8 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
       end
     end
   end
-  addCategory("Enchanting", enchantLines)
+  addTaskCategory("APPLY_ENCHANT", "Enchanting", enchantLines)
+  addTaskCategory("APPLY_TINKER", "Tinkers", tinkerLines)
 
   local pendingUpgradeCount = 0
   local firstUpgradeTask = nil
@@ -423,7 +466,7 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
     local targetStep = tonumber(firstUpgradeTask and firstUpgradeTask.targetUpgradeStep) or tonumber(rowData.expectedUpgradeStep) or 0
     local maxStep = tonumber(rowData.equippedUpgradeMax) or tonumber(firstUpgradeTask and firstUpgradeTask.upgradeMax) or 0
     if maxStep <= 0 then maxStep = math.max(2, targetStep) end
-    addCategory("Upgrades", { ("Upgrade item: %d/%d -> %d/%d."):format(currentStep, maxStep, targetStep, maxStep) })
+    addTaskCategory("UPGRADE_ITEM", "Upgrades", { ("Upgrade item: %d/%d -> %d/%d."):format(currentStep, maxStep, targetStep, maxStep) })
   end
 
   local reforgeLines = {}
@@ -452,7 +495,8 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
   if not hasReforgeLite and rowData.reforgeTasks and #rowData.reforgeTasks > 0 then
     reforgeLines[#reforgeLines + 1] = "ReforgeLite Classic is recommended for this task."
   end
-  addCategory("Reforging", reforgeLines)
+  addTaskCategory("REFORGE_ITEM", "Reforging", reforgeLines)
+  renderTaskCategories()
 
   return added
 end
@@ -691,6 +735,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   local hasPriorityAnyEnchant = priority and priority.hasEnchantWork or (hasEnchantWork or hasTinkerWork)
   local hasPriorityUpgrade = priority and priority.hasUpgradeWork or hasUpgradeWork
   local hasPriorityReforge = priority and priority.hasReforgeWork or hasReforgeWork
+  local nextPriorityAction = priority and priority.nextAction or nil
   local nextPriorityEnchantTask = priority and priority.nextEnchantTask or nil
 
   if rowData.rowStatus == "WRONG_ITEM" then
@@ -953,31 +998,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   end)
   SetActionButtonReforgeStyle(rowFrame.action, false)
 
-  if rowData.socketHintText then
-    rowFrame.action:SetText("Add socket")
-    local hintItemId = tonumber(rowData.socketHintItemId) or 0
-    local extraItemId = tonumber(rowData.socketHintExtraItemId) or 0
-    local missingHintItem = hintItemId ~= 0 and not HasItemInBags(hintItemId)
-    local missingExtraItem = extraItemId ~= 0 and not HasItemInBags(extraItemId)
-    if missingHintItem or missingExtraItem then
-      rowFrame.action:SetEnabled(false)
-      rowFrame.action:SetText("Purchase")
-      rowFrame.action:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Purchase required items first.")
-        GameTooltip:Show()
-      end)
-      rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
-    else
-      rowFrame.action:SetEnabled(true)
-      rowFrame.action:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(SocketHintDescription(rowData), nil, nil, nil, nil, true)
-        GameTooltip:Show()
-      end)
-      rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
-    end
-  elseif rowData.rowStatus == "OK" then
+  if rowData.rowStatus == "OK" then
     rowFrame.action:SetEnabled(false)
     rowFrame.action:SetText("Done")
   elseif rowData.rowStatus == "WRONG_ITEM" then
@@ -1004,7 +1025,19 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         end
       end
     end
-    if hasBlockingTask then
+    local nextActionType = nextPriorityAction and nextPriorityAction.type or nil
+    local nextActionTask = nextPriorityAction and nextPriorityAction.task or nil
+    local isNextActionMissing = false
+    if nextActionType == "ADD_SOCKET" then
+      local hintItemId = tonumber(rowData.socketHintItemId) or 0
+      local extraItemId = tonumber(rowData.socketHintExtraItemId) or 0
+      isNextActionMissing = (hintItemId ~= 0 and not HasItemInBags(hintItemId))
+        or (extraItemId ~= 0 and not HasItemInBags(extraItemId))
+    elseif nextActionTask and nextActionTask.status == WSGH.Const.STATUS_MISSING then
+      isNextActionMissing = true
+    end
+
+    if isNextActionMissing or (not nextPriorityAction and hasBlockingTask) then
       rowFrame.action:SetEnabled(false)
       rowFrame.action:SetText("Purchase")
       rowFrame.action:SetScript("OnEnter", function(self)
@@ -1013,15 +1046,26 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         GameTooltip:Show()
       end)
       rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
-    elseif hasPrioritySocket then
+    elseif nextActionType == "ADD_SOCKET" then
+      rowFrame.action:SetEnabled(true)
+      rowFrame.action:SetText("Add socket")
+      rowFrame.action:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(SocketHintDescription(rowData), nil, nil, nil, nil, true)
+        GameTooltip:Show()
+      end)
+      rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
+    elseif nextActionType == "SOCKET_GEM" or (not nextActionType and hasPrioritySocket) then
       rowFrame.action:SetEnabled(true)
       rowFrame.action:SetText("Socket")
       rowFrame.action:SetScript("OnEnter", nil)
       rowFrame.action:SetScript("OnLeave", nil)
-    elseif hasPriorityAnyEnchant and not hasPrioritySocket then
+    elseif nextActionType == "APPLY_ENCHANT" or nextActionType == "APPLY_TINKER"
+      or (not nextActionType and hasPriorityAnyEnchant and not hasPrioritySocket) then
       rowFrame.action:SetEnabled(true)
-      local nextIsTinker = nextPriorityEnchantTask and nextPriorityEnchantTask.type == "APPLY_TINKER"
-      local nextManual = nextPriorityEnchantTask and nextPriorityEnchantTask.manualOnly == true
+      local enchantActionTask = nextActionTask or nextPriorityEnchantTask
+      local nextIsTinker = nextActionType == "APPLY_TINKER" or (enchantActionTask and enchantActionTask.type == "APPLY_TINKER")
+      local nextManual = enchantActionTask and enchantActionTask.manualOnly == true
       rowFrame.action:SetText(nextIsTinker and "Tinker" or "Enchant")
       rowFrame.action:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1037,13 +1081,13 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         GameTooltip:Show()
       end)
       rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
-    elseif hasPriorityUpgrade and not hasPriorityAnyEnchant then
+    elseif nextActionType == "UPGRADE_ITEM" or (not nextActionType and hasPriorityUpgrade and not hasPriorityAnyEnchant) then
       rowFrame.action:SetEnabled(true)
       rowFrame.action:SetText("Upgrade")
       rowFrame.action:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         local expected = tonumber(rowData.expectedUpgradeStep) or 0
-        local firstTask = rowData.upgradeTasks and rowData.upgradeTasks[1] or nil
+        local firstTask = nextActionTask or (rowData.upgradeTasks and rowData.upgradeTasks[1] or nil)
         local targetStep = firstTask and tonumber(firstTask.targetUpgradeStep) or expected
         local currentStep = tonumber(rowData.equippedUpgradeLevel) or 0
         local maxStep = tonumber(rowData.equippedUpgradeMax) or 0
@@ -1053,11 +1097,11 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         GameTooltip:Show()
       end)
       rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)
-    elseif hasPriorityReforge and not hasPriorityAnyEnchant and not hasPriorityUpgrade then
+    elseif nextActionType == "REFORGE_ITEM" or (not nextActionType and hasPriorityReforge and not hasPriorityAnyEnchant and not hasPriorityUpgrade) then
       rowFrame.action:SetEnabled(true)
       rowFrame.action:SetText("Reforge*")
       SetActionButtonReforgeStyle(rowFrame.action, true)
-      local firstReforgeTask = rowData.reforgeTasks and rowData.reforgeTasks[1] or nil
+      local firstReforgeTask = nextActionTask or (rowData.reforgeTasks and rowData.reforgeTasks[1] or nil)
       local reforgeText = firstReforgeTask and firstReforgeTask.wantReforgeText or nil
       local reforgeLiteIntegration = WSGH.Integrations and WSGH.Integrations.ReforgeLite or nil
       local hasReforgeLite = reforgeLiteIntegration
@@ -1071,6 +1115,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
         else
           GameTooltip:AddLine("Apply reforge manually. ReforgeLite Classic is recommended for this step.", 1, 0.82, 0.2, true)
         end
+        GameTooltip:AddLine("Upgrade before reforging to avoid incorrect reforge results.", 1, 0.82, 0.2, true)
         GameTooltip:Show()
       end)
       rowFrame.action:SetScript("OnLeave", GameTooltip_Hide)

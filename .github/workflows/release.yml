@@ -14,9 +14,12 @@ jobs:
     env:
       CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
       CURSEFORGE_PROJECT_ID: ${{ vars.CURSEFORGE_PROJECT_ID }}
+      CURSEFORGE_GAME_VERSION_IDS: ${{ vars.CURSEFORGE_GAME_VERSION_IDS }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Determine release metadata
         id: meta
@@ -38,6 +41,42 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "release_type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release channel branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          RELEASE_TYPE="${{ steps.meta.outputs.release_type }}"
+          TAG_SHA="${GITHUB_SHA}"
+          CONTAINING_BRANCHES="$(git branch -r --contains "$TAG_SHA" | sed 's/^[* ]*//')"
+
+          echo "Branches containing ${GITHUB_REF_NAME}:"
+          printf '%s\n' "$CONTAINING_BRANCHES"
+
+          case "$RELEASE_TYPE" in
+            alpha)
+              if ! printf '%s\n' "$CONTAINING_BRANCHES" | grep -Eq '^origin/feature/'; then
+                echo "Alpha tags must point to a commit on a feature/* branch."
+                exit 1
+              fi
+              ;;
+            beta)
+              if ! printf '%s\n' "$CONTAINING_BRANCHES" | grep -Eq '^origin/release/'; then
+                echo "Beta tags must point to a commit on a release/* branch."
+                exit 1
+              fi
+              ;;
+            release)
+              if ! printf '%s\n' "$CONTAINING_BRANCHES" | grep -Eq '^origin/main$'; then
+                echo "Stable release tags must point to a commit on main."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unknown release type: $RELEASE_TYPE"
+              exit 1
+              ;;
+          esac
 
       - name: Build addon zip
         id: package
@@ -109,7 +148,7 @@ jobs:
             CURSEFORGE_CHANGELOG_BLOCK="Release ${VERSION}"
           fi
 
-          FULL_CHANGELOG_URL="https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md"
+          FULL_CHANGELOG_URL="https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/CHANGELOG.md"
           CURSEFORGE_CHANGELOG_BLOCK="$(printf '[Full changelog](%s)\n\n%s' "$FULL_CHANGELOG_URL" "$CURSEFORGE_CHANGELOG_BLOCK")"
 
           {
@@ -130,14 +169,14 @@ jobs:
           prerelease: ${{ steps.meta.outputs.prerelease }}
 
       - name: Publish to CurseForge
-        if: ${{ env.CURSEFORGE_API_TOKEN != '' && env.CURSEFORGE_PROJECT_ID != '' }}
+        if: ${{ env.CURSEFORGE_API_TOKEN != '' && env.CURSEFORGE_PROJECT_ID != '' && env.CURSEFORGE_GAME_VERSION_IDS != '' }}
         uses: itsmeow/curseforge-upload@v3
         with:
           token: ${{ env.CURSEFORGE_API_TOKEN }}
           project_id: ${{ env.CURSEFORGE_PROJECT_ID }}
           game_endpoint: wow
           file_path: ${{ steps.package.outputs.artifact }}
-          game_versions: "14102"
+          game_versions: ${{ env.CURSEFORGE_GAME_VERSION_IDS }}
           changelog: ${{ steps.changelog.outputs.curseforge_body }}
           changelog_type: markdown
           release_type: ${{ steps.meta.outputs.release_type }}

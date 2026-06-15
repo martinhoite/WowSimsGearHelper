@@ -125,7 +125,7 @@ if ([string]::IsNullOrWhiteSpace($curseforgeBody)) {
   $curseforgeBody = "Release $Version"
 }
 
-$fullChangelogUrl = "https://github.com/martinhoite/WowSimsGearHelper/blob/main/CHANGELOG.md"
+$fullChangelogUrl = "https://github.com/martinhoite/WowSimsGearHelper/blob/v$Version/CHANGELOG.md"
 $curseforgeBody = ("[Full changelog]($fullChangelogUrl)`n`n" + $curseforgeBody.Trim())
 
 Write-Host "=== VERSION ==="

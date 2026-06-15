@@ -174,6 +174,41 @@ WSGH.Const.DEFAULT_TINKERS = {
   [15] = 126392, -- Cloak: Goblin Glider
   [10] = 126731, -- Gloves: Synapse Springs
 }
+
+WSGH.Const.TASK_PRIORITY_TYPES = {
+  {
+    key = "ADD_SOCKET",
+    label = "Add sockets",
+    description = "Socket-addition tasks, usually Blacksmithing sockets; also covers other effects that add a socket.",
+  },
+  {
+    key = "SOCKET_GEM",
+    label = "Socket gems",
+    description = "Gem tasks for empty or wrong sockets.",
+  },
+  {
+    key = "APPLY_ENCHANT",
+    label = "Apply enchants",
+    description = "Standard enchant tasks from the imported plan.",
+  },
+  {
+    key = "APPLY_TINKER",
+    label = "Apply tinkers",
+    description = "Engineering tinker tasks for cloak, gloves, or belt.",
+  },
+  {
+    key = "UPGRADE_ITEM",
+    label = "Upgrade items",
+    description = "Item upgrade tasks using the selected currency preference.",
+  },
+  {
+    key = "REFORGE_ITEM",
+    label = "Reforge items",
+    description = "Reforge tasks from the imported plan.",
+    warning = "Upgrade before reforging to avoid incorrect reforge results.",
+  },
+}
+
 WSGH.Const.HIGHLIGHT = {
   style = "glow",
   color = { 0.95, 0.95, 0.32 },
@@ -241,6 +276,27 @@ WSGH.Const.UI = {
       closeButton = { width = 18, height = 18 },
     },
     categories = { "Gems", "Enchants", "Other" },
+  },
+  settings = {
+    taskPriority = {
+      xOffset = 320,
+      yOffset = -8,
+      width = 250,
+      rowHeight = 28,
+      rowGap = 4,
+      labelGap = 4,
+      rowTopOffset = -58,
+      rankWidth = 24,
+      rankOffsetX = 8,
+      labelOffsetX = 8,
+      noteHeight = 32,
+      resetButton = { width = 64, height = 20, yOffset = 2 },
+      backdrop = {
+        tileSize = 16,
+        edgeSize = 10,
+        inset = 2,
+      },
+    },
   },
   help = {
     iconButton = { width = 18, height = 18 },

@@ -169,6 +169,7 @@ local HasUpgradeSnapshotChanged
 local BuildDiffAndRender
 local RegisterUIEvents
 local UnregisterUIEvents
+local ExecuteUpgradeAction
 
 local function RuntimePollUpdate(self, elapsed)
   self.pollElapsed = (tonumber(self.pollElapsed) or 0) + (tonumber(elapsed) or 0)
@@ -287,81 +288,129 @@ local function ApplyImportedPlan(plan, source, rawJson)
 end
 WSGH.UI.ApplyImportedPlan = ApplyImportedPlan
 
-local function FindNextPendingSocketTask(rowData)
-  if not rowData then return nil end
-  for _, task in ipairs(rowData.socketTasks or {}) do
-    if task and task.status ~= WSGH.Const.STATUS_OK then
+local function GetTaskPriorityRank(taskType)
+  if WSGH.Util and WSGH.Util.GetTaskPriorityRank then
+    return WSGH.Util.GetTaskPriorityRank(taskType)
+  end
+
+  local order = WSGH.Util and WSGH.Util.NormalizeTaskPriorityOrder and WSGH.Util.NormalizeTaskPriorityOrder(nil) or {}
+  for index, key in ipairs(order) do
+    if key == taskType then
+      return index
+    end
+  end
+  return #order + 1
+end
+
+local function AddPendingActionCandidate(candidates, actionType, task, sequence)
+  candidates[#candidates + 1] = {
+    type = actionType,
+    task = task,
+    rank = GetTaskPriorityRank(actionType),
+    sequence = sequence or (#candidates + 1),
+  }
+end
+
+local function BuildSocketHintTask(rowData)
+  if not (rowData and rowData.socketHintText) then return nil end
+  return {
+    type = "ADD_SOCKET",
+    slotId = rowData.slotId,
+    slotKey = rowData.slotKey,
+    itemId = rowData.equippedItemId or rowData.expectedItemId,
+    status = WSGH.Const.STATUS_WRONG,
+    socketHintText = rowData.socketHintText,
+    socketHintItemId = rowData.socketHintItemId,
+    socketHintExtraItemId = rowData.socketHintExtraItemId,
+    socketHintExtraItemCount = rowData.socketHintExtraItemCount,
+  }
+end
+
+local function FindNextPendingTask(tasks, taskType)
+  for _, task in ipairs(tasks or {}) do
+    local currentType = task and (task.type or taskType)
+    if task and task.status ~= WSGH.Const.STATUS_OK and (not taskType or currentType == taskType) then
       return task
     end
   end
   return nil
 end
 
-local function FindNextPendingEnchantTask(rowData)
-  if not rowData then return nil end
-  for _, task in ipairs(rowData.enchantTasks or {}) do
-    if task and task.status ~= WSGH.Const.STATUS_OK then
-      return task
-    end
-  end
-  return nil
+local function HasPendingTask(tasks, taskType)
+  return FindNextPendingTask(tasks, taskType) ~= nil
 end
 
-local function HasPendingUpgradeTask(rowData)
-  if not rowData then return false end
-  for _, task in ipairs(rowData.upgradeTasks or {}) do
-    if task and task.status ~= WSGH.Const.STATUS_OK then
-      return true
-    end
-  end
-  return false
-end
+function WSGH.UI.GetNextPriorityAction(rowData)
+  if not rowData or rowData.rowStatus ~= "NEEDS_WORK" then return nil end
 
-local function HasPendingReforgeTask(rowData)
-  if not rowData then return false end
-  for _, task in ipairs(rowData.reforgeTasks or {}) do
-    if task and task.status ~= WSGH.Const.STATUS_OK then
-      return true
-    end
+  local candidates = {}
+  local sequence = 0
+
+  local addSocketTask = BuildSocketHintTask(rowData)
+  if addSocketTask then
+    sequence = sequence + 1
+    AddPendingActionCandidate(candidates, "ADD_SOCKET", addSocketTask, sequence)
   end
-  return false
+
+  local socketTask = FindNextPendingTask(rowData.socketTasks, "SOCKET_GEM")
+  if socketTask then
+    sequence = sequence + 1
+    AddPendingActionCandidate(candidates, "SOCKET_GEM", socketTask, sequence)
+  end
+
+  local enchantTask = FindNextPendingTask(rowData.enchantTasks, "APPLY_ENCHANT")
+  if enchantTask then
+    sequence = sequence + 1
+    AddPendingActionCandidate(candidates, "APPLY_ENCHANT", enchantTask, sequence)
+  end
+
+  local tinkerTask = FindNextPendingTask(rowData.enchantTasks, "APPLY_TINKER")
+  if tinkerTask then
+    sequence = sequence + 1
+    AddPendingActionCandidate(candidates, "APPLY_TINKER", tinkerTask, sequence)
+  end
+
+  local upgradeTask = FindNextPendingTask(rowData.upgradeTasks, "UPGRADE_ITEM")
+  if upgradeTask then
+    sequence = sequence + 1
+    AddPendingActionCandidate(candidates, "UPGRADE_ITEM", upgradeTask, sequence)
+  end
+
+  local reforgeTask = FindNextPendingTask(rowData.reforgeTasks, "REFORGE_ITEM")
+  if reforgeTask then
+    sequence = sequence + 1
+    AddPendingActionCandidate(candidates, "REFORGE_ITEM", reforgeTask, sequence)
+  end
+
+  table.sort(candidates, function(a, b)
+    if a.rank ~= b.rank then
+      return a.rank < b.rank
+    end
+    return a.sequence < b.sequence
+  end)
+
+  return candidates[1]
 end
 
 function WSGH.UI.GetRowActionPriority(rowData)
-  local nextSocketTask = FindNextPendingSocketTask(rowData)
-  local nextEnchantTask = FindNextPendingEnchantTask(rowData)
+  local nextSocketTask = FindNextPendingTask(rowData and rowData.socketTasks or nil, "SOCKET_GEM")
+  local nextEnchantTask = FindNextPendingTask(rowData and rowData.enchantTasks or nil, "APPLY_ENCHANT")
+    or FindNextPendingTask(rowData and rowData.enchantTasks or nil, "APPLY_TINKER")
   return {
+    nextAction = WSGH.UI.GetNextPriorityAction(rowData),
     nextSocketTask = nextSocketTask,
     nextEnchantTask = nextEnchantTask,
+    hasAddSocketWork = rowData and rowData.socketHintText ~= nil or false,
     hasSocketWork = nextSocketTask ~= nil,
-    hasEnchantWork = nextEnchantTask ~= nil,
-    hasUpgradeWork = HasPendingUpgradeTask(rowData),
-    hasReforgeWork = HasPendingReforgeTask(rowData),
+    hasEnchantWork = HasPendingTask(rowData and rowData.enchantTasks or nil, "APPLY_ENCHANT")
+      or HasPendingTask(rowData and rowData.enchantTasks or nil, "APPLY_TINKER"),
+    hasUpgradeWork = HasPendingTask(rowData and rowData.upgradeTasks or nil, "UPGRADE_ITEM"),
+    hasReforgeWork = HasPendingTask(rowData and rowData.reforgeTasks or nil, "REFORGE_ITEM"),
   }
 end
 
 local function DetermineNextAction(rowData)
-  if not rowData or rowData.rowStatus ~= "NEEDS_WORK" then return nil end
-  local priority = WSGH.UI.GetRowActionPriority(rowData)
-  if priority.nextSocketTask then
-    return {
-      type = "SOCKET_GEM",
-      task = priority.nextSocketTask,
-    }
-  end
-  if priority.nextEnchantTask then
-    return {
-      type = priority.nextEnchantTask.type or "APPLY_ENCHANT",
-      task = priority.nextEnchantTask,
-    }
-  end
-  if priority.hasReforgeWork and not priority.hasUpgradeWork then
-    return {
-      type = "REFORGE_ITEM",
-      task = rowData.reforgeTasks and rowData.reforgeTasks[1] or nil,
-    }
-  end
-  return nil
+  return WSGH.UI.GetNextPriorityAction(rowData)
 end
 
 local function GetRowBySlotId(slotId)
@@ -1124,7 +1173,10 @@ end
 
 local function ExecuteAction(action, rowData)
   if not action then return end
-  if action.type == "SOCKET_GEM" then
+  if action.type == "ADD_SOCKET" then
+    Guide.currentAction = nil
+    ExecuteSocketHintAction(rowData)
+  elseif action.type == "SOCKET_GEM" then
     if action.task and action.task.status == WSGH.Const.STATUS_MISSING then
       WSGH.Util.Print(("Missing required gem (%d) for %s."):format(action.task.wantGemId, rowData and rowData.slotKey or "slot"))
     end
@@ -1139,6 +1191,11 @@ local function ExecuteAction(action, rowData)
     end
     Guide.currentAction = action
     ExecuteEnchantAction(action)
+  elseif action.type == "UPGRADE_ITEM" then
+    Guide.currentAction = nil
+    if ExecuteUpgradeAction then
+      ExecuteUpgradeAction(rowData)
+    end
   elseif action.type == "REFORGE_ITEM" then
     Guide.currentAction = action
     ExecuteReforgeAction()
@@ -1674,46 +1731,24 @@ local function TryInsertEquippedItemIntoItemUpgradeFrame(slotId)
   return consumed
 end
 
-local function OnRowAction(rowData)
+ExecuteUpgradeAction = function(rowData)
+  ClearActionGuidanceHighlights()
   if not rowData then return end
-  if rowData.rowStatus == "WRONG_ITEM" then
-    ClearActionGuidanceHighlights()
-    EquipExpectedItem(rowData)
-    return
+
+  local itemName = GetItemInfo(rowData.expectedItemId or 0) or rowData.slotKey or "item"
+  local current = tonumber(rowData.equippedUpgradeLevel) or 0
+  local target = tonumber(rowData.expectedUpgradeStep) or 0
+  local maxStep = tonumber(rowData.equippedUpgradeMax) or 0
+  if maxStep <= 0 then
+    maxStep = math.max(2, target)
   end
-  if rowData.socketHintText then
-    if InCombatLockdown and InCombatLockdown() then
-      WSGH.Util.Print("Cannot start guidance during combat; try again after combat.")
-      return
-    end
-    ExecuteSocketHintAction(rowData)
-    return
+  if target > maxStep then
+    target = maxStep
   end
-  local priority = WSGH.UI.GetRowActionPriority(rowData)
-  if priority.hasUpgradeWork and not priority.hasSocketWork and not priority.hasEnchantWork then
-    ClearActionGuidanceHighlights()
-    local itemName = GetItemInfo(rowData.expectedItemId or 0) or rowData.slotKey or "item"
-    local current = tonumber(rowData.equippedUpgradeLevel) or 0
-    local target = tonumber(rowData.expectedUpgradeStep) or 0
-    local maxStep = tonumber(rowData.equippedUpgradeMax) or 0
-    if maxStep <= 0 then
-      maxStep = math.max(2, target)
-    end
-    if target > maxStep then
-      target = maxStep
-    end
-    local inserted = TryInsertEquippedItemIntoItemUpgradeFrame(rowData.slotId)
-    if inserted then
-      WSGH.Util.Print(("Inserted %s into the upgrader (%d/%d -> %d/%d)."):format(
-        tostring(itemName),
-        current,
-        maxStep,
-        target,
-        maxStep
-      ))
-      return
-    end
-    WSGH.Util.Print(("Upgrade needed for %s: %d/%d -> %d/%d. Visit the Item Upgrader NPC."):format(
+
+  local inserted = TryInsertEquippedItemIntoItemUpgradeFrame(rowData.slotId)
+  if inserted then
+    WSGH.Util.Print(("Inserted %s into the upgrader (%d/%d -> %d/%d)."):format(
       tostring(itemName),
       current,
       maxStep,
@@ -1722,8 +1757,21 @@ local function OnRowAction(rowData)
     ))
     return
   end
-  if priority.hasReforgeWork and not priority.hasSocketWork and not priority.hasEnchantWork and not priority.hasUpgradeWork then
-    ExecuteReforgeAction()
+
+  WSGH.Util.Print(("Upgrade needed for %s: %d/%d -> %d/%d. Visit the Item Upgrader NPC."):format(
+    tostring(itemName),
+    current,
+    maxStep,
+    target,
+    maxStep
+  ))
+end
+
+local function OnRowAction(rowData)
+  if not rowData then return end
+  if rowData.rowStatus == "WRONG_ITEM" then
+    ClearActionGuidanceHighlights()
+    EquipExpectedItem(rowData)
     return
   end
   Guide.StartForRow(rowData)
