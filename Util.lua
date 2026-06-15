@@ -53,6 +53,46 @@ function WSGH.Util.ArrayFilterNonZero(arr)
   return out
 end
 
+function WSGH.Util.GetDefaultTaskPriorityOrder()
+  local order = {}
+  for _, taskType in ipairs(WSGH.Const and WSGH.Const.TASK_PRIORITY_TYPES or {}) do
+    if type(taskType.key) == "string" and taskType.key ~= "" then
+      order[#order + 1] = taskType.key
+    end
+  end
+  return order
+end
+
+function WSGH.Util.NormalizeTaskPriorityOrder(order)
+  local normalized = {}
+  local seen = {}
+  local valid = {}
+
+  for _, taskType in ipairs(WSGH.Const and WSGH.Const.TASK_PRIORITY_TYPES or {}) do
+    if type(taskType.key) == "string" and taskType.key ~= "" then
+      valid[taskType.key] = true
+    end
+  end
+
+  if type(order) == "table" then
+    for _, key in ipairs(order) do
+      if valid[key] and not seen[key] then
+        normalized[#normalized + 1] = key
+        seen[key] = true
+      end
+    end
+  end
+
+  for _, key in ipairs(WSGH.Util.GetDefaultTaskPriorityOrder()) do
+    if not seen[key] then
+      normalized[#normalized + 1] = key
+      seen[key] = true
+    end
+  end
+
+  return normalized
+end
+
 function WSGH.Util.Print(msg)
   DEFAULT_CHAT_FRAME:AddMessage(("|cff33ff99WSGH|r: %s"):format(tostring(msg)))
 end
@@ -149,6 +189,7 @@ function WSGH.Util.GetPreferences()
   if prefs.useValorForUpgrades == nil then
     prefs.useValorForUpgrades = (prefs.upgradeCurrency == "VALOR")
   end
+  prefs.taskPriorityOrder = WSGH.Util.NormalizeTaskPriorityOrder(prefs.taskPriorityOrder)
   WSGH.DB = _G.WowSimsGearHelperDB
   return prefs
 end
