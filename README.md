@@ -1,7 +1,7 @@
 WowSims Gear Helper
 <!-- ![Alpha](https://img.shields.io/badge/alpha-0.1.2--alpha.2-blue) -->
 ![Alpha](https://img.shields.io/badge/alpha-none-lightgrey)
-![Beta](https://img.shields.io/badge/beta-none-lightgrey)
+![Beta](https://img.shields.io/badge/beta-1.3.0--beta.1-blue)
 ![Release](https://img.shields.io/badge/release-1.2.0-success)
 ===================
 
