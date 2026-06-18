@@ -188,7 +188,9 @@ function WowSimsImporter.FromDecoded(decoded)
     local importHasEnchantField = e.enchant ~= nil
     local importHasGemsField = e.gems ~= nil
     local importHasUpgradeField = e.upgradeStep ~= nil
-    local importHasReforgeField = e.reforging ~= nil
+    -- WowSims omits reforging when the target is no reforge, so every imported
+    -- item carries an explicit normalized reforge target.
+    local importHasReforgeField = itemId ~= 0
     local expectedGemsByIndex, expectedGemSocketCount = NormalizeGemsByIndex(e.gems)
 
     local expectedEnchantId, enchantUnsupported = NormalizeEnchantId(e.enchant)

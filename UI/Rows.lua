@@ -479,12 +479,12 @@ local function AddRowTaskTooltipLines(rowData, tooltipState)
       local label = task.wantReforgeText
       local want = tonumber(task.wantReforgeId) or 0
       local have = tonumber(task.haveReforgeId) or 0
-      if not hasReforgeLite then
+      if want == 0 then
+        reforgeLines[#reforgeLines + 1] = "Remove current reforge."
+      elseif not hasReforgeLite then
         -- Reforge IDs are not useful without ReforgeLite's method data.
       elseif type(label) == "string" and label ~= "" then
         reforgeLines[#reforgeLines + 1] = label .. "."
-      elseif want == 0 then
-        reforgeLines[#reforgeLines + 1] = ("Remove current reforge (%d)."):format(have)
       elseif have == 0 then
         reforgeLines[#reforgeLines + 1] = ("Apply ReforgeLite reforge %d."):format(want)
       else
@@ -1103,6 +1103,9 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       SetActionButtonReforgeStyle(rowFrame.action, true)
       local firstReforgeTask = nextActionTask or (rowData.reforgeTasks and rowData.reforgeTasks[1] or nil)
       local reforgeText = firstReforgeTask and firstReforgeTask.wantReforgeText or nil
+      if firstReforgeTask and (tonumber(firstReforgeTask.wantReforgeId) or 0) == 0 then
+        reforgeText = "Remove current reforge."
+      end
       local reforgeLiteIntegration = WSGH.Integrations and WSGH.Integrations.ReforgeLite or nil
       local hasReforgeLite = reforgeLiteIntegration
         and reforgeLiteIntegration.IsAvailable
@@ -1110,6 +1113,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       rowFrame.action:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(reforgeText or "Reforge item.")
+        GameTooltip:AddLine(" ")
         if hasReforgeLite then
           GameTooltip:AddLine("Use ReforgeLite to apply the changes.", 1, 0.82, 0.2, true)
         else

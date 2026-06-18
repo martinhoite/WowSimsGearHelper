@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.1] - 18 Jun, 2026
+
+### Fixed
+- Reforge removal tasks now appear when an imported item expects no reforge but the equipped item is currently reforged.
+
 ## [1.3.0] - 16 Jun, 2026
 
 ### Added

@@ -400,10 +400,6 @@ local function BuildReforgeTasksForSlot(planSlot, equippedSlot)
   if expectedItemId == 0 or equippedItemId ~= expectedItemId then
     return tasks
   end
-  if planSlot.importHasReforgeField ~= true then
-    return tasks
-  end
-
   local expectedReforgeId = tonumber(planSlot.expectedReforgeId) or 0
   local equippedReforgeId = tonumber(equippedSlot.reforgeId) or 0
   if expectedReforgeId == equippedReforgeId then
