@@ -3,7 +3,7 @@ local WSGH = _G.WowSimsGearHelper or {}
 _G.WowSimsGearHelper = WSGH
 
 WSGH.ADDON_NAME = ADDON_NAME
-WSGH.VERSION = "1.2.0"
+WSGH.VERSION = "1.3.1"
 
 local function EnsureDB()
   if type(_G.WowSimsGearHelperDB) ~= "table" then
@@ -37,6 +37,7 @@ local function EnsureDB()
       tinkers = {},
       upgradeCurrency = "JUSTICE",
       useValorForUpgrades = false,
+      taskPriorityOrder = WSGH.Util.GetDefaultTaskPriorityOrder and WSGH.Util.GetDefaultTaskPriorityOrder() or {},
     }
   end
   local prefs = _G.WowSimsGearHelperDB.profile.prefs
@@ -53,6 +54,9 @@ local function EnsureDB()
   if prefs.minimap.hide == nil then prefs.minimap.hide = false end
   if prefs.upgradeCurrency == nil then prefs.upgradeCurrency = "JUSTICE" end
   if prefs.useValorForUpgrades == nil then prefs.useValorForUpgrades = (prefs.upgradeCurrency == "VALOR") end
+  if WSGH.Util.NormalizeTaskPriorityOrder then
+    prefs.taskPriorityOrder = WSGH.Util.NormalizeTaskPriorityOrder(prefs.taskPriorityOrder)
+  end
 
   WSGH.DB = _G.WowSimsGearHelperDB
 end

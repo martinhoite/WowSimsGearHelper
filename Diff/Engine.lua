@@ -400,10 +400,6 @@ local function BuildReforgeTasksForSlot(planSlot, equippedSlot)
   if expectedItemId == 0 or equippedItemId ~= expectedItemId then
     return tasks
   end
-  if planSlot.importHasReforgeField ~= true then
-    return tasks
-  end
-
   local expectedReforgeId = tonumber(planSlot.expectedReforgeId) or 0
   local equippedReforgeId = tonumber(equippedSlot.reforgeId) or 0
   if expectedReforgeId == equippedReforgeId then
@@ -720,6 +716,28 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
       }
     end
   end
+
+  local taskPriorityRanks = {}
+  local taskPriorityOrder = WSGH.Util and WSGH.Util.GetTaskPriorityOrder and WSGH.Util.GetTaskPriorityOrder() or {}
+  for index, taskType in ipairs(taskPriorityOrder) do
+    taskPriorityRanks[taskType] = index
+  end
+
+  table.sort(result.tasks, function(a, b)
+    local aRank = taskPriorityRanks[a and a.type] or 999
+    local bRank = taskPriorityRanks[b and b.type] or 999
+    if aRank ~= bRank then
+      return aRank < bRank
+    end
+
+    local aSlot = WSGH.Const.SLOT_INDEX_BY_ID[tonumber(a and a.slotId) or 0] or 999
+    local bSlot = WSGH.Const.SLOT_INDEX_BY_ID[tonumber(b and b.slotId) or 0] or 999
+    if aSlot ~= bSlot then
+      return aSlot < bSlot
+    end
+
+    return (tonumber(a and a.socketIndex) or 0) < (tonumber(b and b.socketIndex) or 0)
+  end)
 
   result.taskCount = #result.tasks
   return result

@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.1] - 18 Jun, 2026
+
+### Fixed
+- Reforge removal tasks now appear when an imported item expects no reforge but the equipped item is currently reforged.
+
+## [1.3.0] - 16 Jun, 2026
+
+### Added
+- Added a task priority ordering UI with drag-and-drop rows.
+- Dragging task types in Settings saves a per-character priority order.
+- Task priority controls which row action is offered first when a slot has multiple kinds of work. Equipping the expected item remains the first prerequisite before task ordering applies.
+- Row badge task details follow the configured task order, including separate sections for enchants and tinkers.
+- The flat diff task list also follows the configured task type order, with equipped slot order used as the secondary sort.
+- Reforging defaults to the last priority with a tooltip reminder to upgrade first, since Blizzard can calculate reforges from stale item stats after upgrades.
+
 ## [1.2.0] - 15 Jun, 2026
 
 ### Added
