@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.2-alpha.1] - 21 Jun, 2026
+
+### Added
+- MoP perfect uncommon gems now compare as equivalent to matching rare gem cuts when checking socketed gems.
+
 ## [1.3.1] - 18 Jun, 2026
 
 ### Fixed
