@@ -53,8 +53,8 @@ function WSGH.UI.EnsureImportDialog()
     edgeSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
   })
-  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
-    WSGH.Util.ApplyOpaqueWindowBackground(dialog, "import")
+  if WSGH.Util and WSGH.Util.ApplyWindowBackground then
+    WSGH.Util.ApplyWindowBackground(dialog, "import")
   end
 
   table.insert(UISpecialFrames, "WowSimsGearHelperImportDialog")

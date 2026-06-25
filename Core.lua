@@ -33,8 +33,8 @@ local function EnsureDB()
       syncImportsToReforgeLite = true,
       minimizeWindowAtReforgeNpc = true,
       restoreWindowAfterReforgeNpc = false,
-      useOpaqueBackgroundForAllWindows = false,
       tinkers = {},
+      colors = {},
       upgradeCurrency = "JUSTICE",
       useValorForUpgrades = false,
       taskPriorityOrder = WSGH.Util.GetDefaultTaskPriorityOrder and WSGH.Util.GetDefaultTaskPriorityOrder() or {},
@@ -48,8 +48,8 @@ local function EnsureDB()
   if prefs.syncImportsToReforgeLite == nil then prefs.syncImportsToReforgeLite = true end
   if prefs.minimizeWindowAtReforgeNpc == nil then prefs.minimizeWindowAtReforgeNpc = true end
   if prefs.restoreWindowAfterReforgeNpc == nil then prefs.restoreWindowAfterReforgeNpc = false end
-  if prefs.useOpaqueBackgroundForAllWindows == nil then prefs.useOpaqueBackgroundForAllWindows = false end
   if prefs.tinkers == nil then prefs.tinkers = {} end
+  if type(prefs.colors) ~= "table" then prefs.colors = {} end
   if prefs.minimap == nil then prefs.minimap = { hide = false } end
   if prefs.minimap.hide == nil then prefs.minimap.hide = false end
   if prefs.upgradeCurrency == nil then prefs.upgradeCurrency = "JUSTICE" end

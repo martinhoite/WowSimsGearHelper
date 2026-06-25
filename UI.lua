@@ -53,6 +53,19 @@ local function IsFrameVisible(frame)
   return frame:IsShown()
 end
 
+local function GetColor(roleKey)
+  if WSGH.Util and WSGH.Util.GetColor then
+    return WSGH.Util.GetColor(roleKey)
+  end
+  return { 1, 1, 1, 1 }
+end
+
+local function SetFontColor(fontString, roleKey)
+  if not (fontString and fontString.SetTextColor) then return end
+  local color = GetColor(roleKey)
+  fontString:SetTextColor(color[1], color[2], color[3], color[4])
+end
+
 local function CloseUIForCombat()
   if not (
     IsFrameVisible(WSGH.UI.frame)
@@ -149,18 +162,18 @@ local function RefreshReforgeReminder()
 end
 
 function WSGH.UI.RefreshWindowBackgrounds()
-  if not (WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground) then return end
+  if not (WSGH.Util and WSGH.Util.ApplyWindowBackground) then return end
 
-  WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.frame, "main")
-  WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.shoppingFrame, "shopping")
-  WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.shoppingReminder, "shoppingReminder", 3)
+  WSGH.Util.ApplyWindowBackground(WSGH.UI.frame, "main")
+  WSGH.Util.ApplyWindowBackground(WSGH.UI.shoppingFrame, "shopping")
+  WSGH.Util.ApplyWindowBackground(WSGH.UI.shoppingReminder, "shoppingReminder", 3)
 
   if WSGH.UI.Help and WSGH.UI.Help.dialog then
-    WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.Help.dialog, "help")
+    WSGH.Util.ApplyWindowBackground(WSGH.UI.Help.dialog, "help")
   end
 
   if WSGH.UI.importDialog then
-    WSGH.Util.ApplyOpaqueWindowBackground(WSGH.UI.importDialog, "import")
+    WSGH.Util.ApplyWindowBackground(WSGH.UI.importDialog, "import")
   end
 end
 
@@ -1832,8 +1845,8 @@ function WSGH.UI.Init()
     edgeSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
   })
-  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
-    WSGH.Util.ApplyOpaqueWindowBackground(mainFrame, "main")
+  if WSGH.Util and WSGH.Util.ApplyWindowBackground then
+    WSGH.Util.ApplyWindowBackground(mainFrame, "main")
   end
 
   RestorePosition(mainFrame)
@@ -1843,11 +1856,13 @@ function WSGH.UI.Init()
   local title = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", 18, -16)
   title:SetText("WowSims Gear Helper")
+  SetFontColor(title, "accent.gold")
 
   local addonVersion = WSGH.Util and WSGH.Util.GetAddonVersion and WSGH.Util.GetAddonVersion() or (WSGH.VERSION or "unknown")
   local versionLabel = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   versionLabel:SetPoint("LEFT", title, "RIGHT", 8, -1)
   versionLabel:SetText(("v%s"):format(tostring(addonVersion)))
+  SetFontColor(versionLabel, "text.secondary")
 
   local helpBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
   helpBtn:SetSize(WSGH.Const.UI.help.iconButton.width, WSGH.Const.UI.help.iconButton.height)
@@ -1866,7 +1881,7 @@ function WSGH.UI.Init()
   local attribution = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   attribution:SetPoint("LEFT", versionLabel, "RIGHT", 8, 0)
   attribution:SetText(("by |c%sBlazzmonk|r - Garalon EU"):format(monkColorCode))
-  attribution:SetTextColor(1, 1, 1, 1)
+  SetFontColor(attribution, "text.normal")
 
   local headerButtons = WSGH.Const.UI.headerButtons
   local close = CreateFrame("Button", nil, mainFrame, "UIPanelCloseButton")
@@ -1894,6 +1909,7 @@ function WSGH.UI.Init()
   local summary = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   summary:SetPoint("LEFT", settingsBtn, "RIGHT", 10, 0)
   summary:SetText("No plan imported")
+  SetFontColor(summary, "text.normal")
 
   local expandAfterReforgeBtn = CreateFrame("Button", nil, mainFrame)
   expandAfterReforgeBtn:SetSize(
@@ -1932,6 +1948,7 @@ function WSGH.UI.Init()
   local listLabel = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   listLabel:SetPoint("TOPLEFT", 18, -78)
   listLabel:SetText("Equipped slots")
+  SetFontColor(listLabel, "accent.gold")
 
   local listWarningChip = CreateFrame("Button", nil, mainFrame)
   listWarningChip:SetPoint("LEFT", listLabel, "RIGHT", 10, 0)
@@ -1948,7 +1965,7 @@ function WSGH.UI.Init()
   local listWarningText = listWarningChip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   listWarningText:SetPoint("LEFT", listWarningIcon, "RIGHT", 4, 0)
   listWarningText:SetJustifyH("LEFT")
-  listWarningText:SetTextColor(1, 0.2, 0.2, 1)
+  SetFontColor(listWarningText, "status.error")
   listWarningText:SetText("")
 
   local scroll = CreateFrame("ScrollFrame", "WowSimsGearHelperScroll", mainFrame, "FauxScrollFrameTemplate")
@@ -2001,25 +2018,27 @@ function WSGH.UI.Init()
     edgeSize = 32,
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
   })
-  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
-    WSGH.Util.ApplyOpaqueWindowBackground(sidebar, "shopping")
+  if WSGH.Util and WSGH.Util.ApplyWindowBackground then
+    WSGH.Util.ApplyWindowBackground(sidebar, "shopping")
   end
 
   local sidebarTitle = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   sidebarTitle:SetPoint("TOPLEFT", 14, -14)
   sidebarTitle:SetText("Shopping List")
+  SetFontColor(sidebarTitle, "accent.gold")
 
   local shoppingByline = sidebar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   shoppingByline:SetPoint("TOPLEFT", sidebarTitle, "BOTTOMLEFT", 0, -4)
   shoppingByline:SetJustifyH("LEFT")
   shoppingByline:SetWordWrap(true)
-  shoppingByline:SetTextColor(1, 0.2, 0.2, 1)
+  SetFontColor(shoppingByline, "shopping.warningText")
   shoppingByline:SetText("")
   shoppingByline:Hide()
 
   local shoppingEmpty = sidebar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   shoppingEmpty:SetPoint("TOPLEFT", shoppingByline, "BOTTOMLEFT", 0, -8)
   shoppingEmpty:SetText("No missing items")
+  SetFontColor(shoppingEmpty, "text.muted")
 
   local shoppingReminder = CreateFrame("Frame", nil, mainFrame, "BackdropTemplate")
   shoppingReminder:SetPoint("TOPLEFT", sidebar, "BOTTOMLEFT", 10, -4)
@@ -2037,15 +2056,15 @@ function WSGH.UI.Init()
   })
   shoppingReminder:SetBackdropColor(0, 0, 0, 0.75)
   shoppingReminder:SetBackdropBorderColor(0.45, 0.45, 0.45, 1)
-  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
-    WSGH.Util.ApplyOpaqueWindowBackground(shoppingReminder, "shoppingReminder", 3)
+  if WSGH.Util and WSGH.Util.ApplyWindowBackground then
+    WSGH.Util.ApplyWindowBackground(shoppingReminder, "shoppingReminder", 3)
   end
   shoppingReminder:Hide()
 
   local shoppingReminderLabel = shoppingReminder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   shoppingReminderLabel:SetPoint("LEFT", WSGH.Const.UI.shopping.reminder.padding, 0)
   shoppingReminderLabel:SetText("Did you reforge?")
-  shoppingReminderLabel:SetTextColor(1, 0.82, 0, 1)
+  SetFontColor(shoppingReminderLabel, "shopping.reminderText")
 
   local shoppingReminderDone = CreateFrame("Button", nil, shoppingReminder, "UIPanelButtonTemplate")
   shoppingReminderDone:SetSize(
@@ -2186,6 +2205,7 @@ function WSGH.UI.Init()
 
   WSGH.UI.frame = mainFrame
   WSGH.UI.title = title
+  WSGH.UI.versionLabel = versionLabel
   WSGH.UI.attribution = attribution
   WSGH.UI.summary = summary
   WSGH.UI.expandAfterReforgeBtn = expandAfterReforgeBtn
@@ -2199,6 +2219,7 @@ function WSGH.UI.Init()
   WSGH.UI.rowRightPad = rowRightPad
   WSGH.UI.listWarningChip = listWarningChip
   WSGH.UI.listWarningText = listWarningText
+  WSGH.UI.listLabel = listLabel
   WSGH.UI.mainBodyFrames = { listLabel, listWarningChip, scroll }
   WSGH.UI.shoppingFrame = sidebar
   WSGH.UI.shoppingTitle = sidebarTitle
@@ -2222,6 +2243,32 @@ function WSGH.UI.Init()
 
   LayoutRows()
   SetAuxiliaryFramesShown(false)
+end
+
+function WSGH.UI.RefreshColors()
+  SetFontColor(WSGH.UI.title, "accent.gold")
+  SetFontColor(WSGH.UI.versionLabel, "text.secondary")
+  SetFontColor(WSGH.UI.attribution, "text.normal")
+  SetFontColor(WSGH.UI.summary, "text.normal")
+  SetFontColor(WSGH.UI.listLabel, "accent.gold")
+  SetFontColor(WSGH.UI.listWarningText, "status.error")
+  SetFontColor(WSGH.UI.shoppingTitle, "accent.gold")
+  SetFontColor(WSGH.UI.shoppingByline, "shopping.warningText")
+  SetFontColor(WSGH.UI.shoppingEmpty, "text.muted")
+  SetFontColor(WSGH.UI.shoppingReminderLabel, "shopping.reminderText")
+  if WSGH.UI.RefreshWindowBackgrounds then
+    WSGH.UI.RefreshWindowBackgrounds()
+  end
+
+  if WSGH.UI.Render then
+    WSGH.UI.Render()
+  end
+  if WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateShoppingList then
+    WSGH.UI.Shopping.UpdateShoppingList()
+  end
+  if WSGH.UI.Highlight and WSGH.UI.Highlight.Refresh then
+    WSGH.UI.Highlight.Refresh()
+  end
 end
 
 function WSGH.UI.Render()
@@ -2284,6 +2331,8 @@ function WSGH.UI.Render()
       WSGH.UI.listWarningChip:Show()
       WSGH.UI.listWarningChip:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local warningColor = GetColor("status.warning")
+        local normalColor = GetColor("text.normal")
         local categories = {}
         if hasGemWarning then categories[#categories + 1] = "gems" end
         if hasEnchantWarning then categories[#categories + 1] = "enchant" end
@@ -2292,12 +2341,12 @@ function WSGH.UI.Render()
         if #categories > 0 then
           titleText = titleText .. ": " .. table.concat(categories, ", ")
         end
-        GameTooltip:SetText(titleText, 1, 0.82, 0.2)
-        GameTooltip:AddLine("Affected slots: " .. table.concat(warningSlots, ", "), 1, 1, 1, true)
-        GameTooltip:AddLine(" ", 1, 1, 1, true)
-        GameTooltip:AddLine("Import data may be incomplete.", 1, 0.82, 0.2, true)
-        GameTooltip:AddLine("Please verify your import and update if it's incorrect.", 1, 0.82, 0.2, true)
-        GameTooltip:AddLine("Hover row ? icons for more information.", 1, 0.82, 0.2, true)
+        GameTooltip:SetText(titleText, warningColor[1], warningColor[2], warningColor[3])
+        GameTooltip:AddLine("Affected slots: " .. table.concat(warningSlots, ", "), normalColor[1], normalColor[2], normalColor[3], true)
+        GameTooltip:AddLine(" ", normalColor[1], normalColor[2], normalColor[3], true)
+        GameTooltip:AddLine("Import data may be incomplete.", warningColor[1], warningColor[2], warningColor[3], true)
+        GameTooltip:AddLine("Please verify your import and update if it's incorrect.", warningColor[1], warningColor[2], warningColor[3], true)
+        GameTooltip:AddLine("Hover row ? icons for more information.", warningColor[1], warningColor[2], warningColor[3], true)
         GameTooltip:Show()
       end)
       WSGH.UI.listWarningChip:SetScript("OnLeave", GameTooltip_Hide)
