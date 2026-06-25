@@ -107,6 +107,21 @@ local function CollectPresentGemIds(gemsByIndex)
   return ids
 end
 
+local function AreGemIdsEquivalent(expectedGemId, actualGemId, expansionKey)
+  expectedGemId = tonumber(expectedGemId) or 0
+  actualGemId = tonumber(actualGemId) or 0
+  if expectedGemId == actualGemId then
+    return true
+  end
+
+  local gemData = WSGH.Data and WSGH.Data.Gems or nil
+  if gemData and gemData.AreEquivalentGemIds then
+    return gemData.AreEquivalentGemIds(expectedGemId, actualGemId, expansionKey)
+  end
+
+  return false
+end
+
 local function SlotLikelyEnchantable(slotId)
   slotId = tonumber(slotId) or 0
   if slotId == 11 or slotId == 12 then
@@ -179,7 +194,7 @@ local function BuildImportWarningsForSlot(planSlot, equippedSlot)
   return warnings
 end
 
-local function BuildSocketTasksForSlot(slotMeta, planSlot, equippedSlot, bagIndex)
+local function BuildSocketTasksForSlot(slotMeta, planSlot, equippedSlot, bagIndex, expansionKey)
   local tasks = {}
   local deferredTasks = {}
 
@@ -218,7 +233,7 @@ local function BuildSocketTasksForSlot(slotMeta, planSlot, equippedSlot, bagInde
 
         if haveGemId == 0 then
           status = WSGH.Const.STATUS_EMPTY
-        elseif haveGemId ~= wantGemId then
+        elseif not AreGemIdsEquivalent(wantGemId, haveGemId, expansionKey) then
           status = WSGH.Const.STATUS_WRONG
         end
 
@@ -619,6 +634,8 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
     tasks = {}, -- flat list of tasks across all rows
     taskCount = 0,
   }
+  local expansionKey = plan.meta and plan.meta.expansionKey or
+    (WSGH.Util and WSGH.Util.GetExpansionKey and WSGH.Util.GetExpansionKey() or nil)
 
   for _, slotMeta in ipairs(WSGH.Const.SLOT_ORDER) do
     local slotId = slotMeta.slotId
@@ -626,7 +643,7 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
     local eqSlot = equipped[slotId]
 
     if planSlot and eqSlot then
-      local socketTasks, deferredSocketTasks = BuildSocketTasksForSlot(slotMeta, planSlot, eqSlot, bagIndex)
+      local socketTasks, deferredSocketTasks = BuildSocketTasksForSlot(slotMeta, planSlot, eqSlot, bagIndex, expansionKey)
       local enchantTasks = BuildEnchantTasksForSlot(planSlot, eqSlot, bagIndex)
       local upgradeTasks = BuildUpgradeTasksForSlot(planSlot, eqSlot)
       local reforgeTasks = BuildReforgeTasksForSlot(planSlot, eqSlot)
