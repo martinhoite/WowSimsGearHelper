@@ -1,6 +1,8 @@
 WowSims Gear Helper
-![Alpha](https://img.shields.io/badge/alpha-1.3.2--alpha.1-blue)
-![Beta](https://img.shields.io/badge/beta-none-lightgrey)
+<!-- ![Alpha](https://img.shields.io/badge/alpha-1.3.3--alpha.1-blue) -->
+<!-- ![Beta](https://img.shields.io/badge/beta-none-lightgrey) -->
+![Alpha](https://img.shields.io/badge/alpha-none-lightgrey)
+![Beta](https://img.shields.io/badge/beta-1.4.0-orange)
 ![Release](https://img.shields.io/badge/release-1.3.1-success)
 ===================
 
@@ -17,6 +19,7 @@ Features
 - Optional ReforgeLite Classic import sync for WowSims reforges.
 - Bag/character slot highlighting to guide actions.
 - Live shopping list updates as items are bought / obtained from mailbox.
+- Customizable UI colors for buttons, windows, rows, shopping text, highlights, and settings states.
 - Built-in quick help plus a more detailed import walkthrough.
 
 Supported Bag Addons
