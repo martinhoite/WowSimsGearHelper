@@ -1,8 +1,8 @@
-WowSims Gear Helper
-<!-- ![Alpha](https://img.shields.io/badge/alpha-0.1.2--alpha.2-blue) -->
-![Alpha](https://img.shields.io/badge/alpha-none-lightgrey)
-![Beta](https://img.shields.io/badge/beta-none-lightgrey)
-![Release](https://img.shields.io/badge/release-1.3.1-success)
+# WowSims Gear Helper
+
+![Alpha](https://img.shields.io/github/v/release/martinhoite/WowSimsGearHelper?filter=*-alpha.*&include_prereleases&sort=semver&label=alpha&color=blue)
+![Beta](https://img.shields.io/github/v/release/martinhoite/WowSimsGearHelper?filter=*-beta.*&include_prereleases&sort=semver&label=beta&color=orange)
+![Release](https://img.shields.io/github/v/release/martinhoite/WowSimsGearHelper?sort=semver&label=release&color=success)
 ===================
 
 <img src="WowSimsGearHelper_icon.png" alt="WowSims Gear Helper icon" width="128">
