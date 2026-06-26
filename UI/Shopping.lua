@@ -6,6 +6,19 @@ local DEBUG_SHOPPING = false
 local jpHighlightItemId = nil
 local IsAuctionHouseOpen
 
+local function GetColor(roleKey)
+  if WSGH.Util and WSGH.Util.GetColor then
+    return WSGH.Util.GetColor(roleKey)
+  end
+  return { 1, 1, 1, 1 }
+end
+
+local function SetFontColor(fontString, roleKey)
+  if not (fontString and fontString.SetTextColor) then return end
+  local color = GetColor(roleKey)
+  fontString:SetTextColor(color[1], color[2], color[3], color[4])
+end
+
 local function DebugShopping(msg)
   if not DEBUG_SHOPPING then return end
   if WSGH and WSGH.Util and WSGH.Util.Print then
@@ -1032,7 +1045,7 @@ function WSGH.UI.Shopping.UpdateShoppingList()
           entry.icon.itemId = nil
           entry.text:SetText(data.header or "")
           entry.text:SetFontObject("GameFontHighlightSmall")
-          entry.text:SetTextColor(1, 0.82, 0, 1)
+          SetFontColor(entry.text, "shopping.header")
           if entry.strike then entry.strike:Hide() end
           entry.count:SetText("")
           if entry.countIcon then
@@ -1069,10 +1082,10 @@ function WSGH.UI.Shopping.UpdateShoppingList()
             entry.icon.itemId = nil
             entry.text:SetFontObject("GameFontNormalSmall")
             entry.text:SetText(("%s: %d/%d | Missing: %d (%s)"):format(currencyShort, currentValue, currencyCap, currencyMissing, upgradesLabel))
-            entry.text:SetTextColor(1, 1, 1, 1)
+            SetFontColor(entry.text, "shopping.itemText")
             if entry.strike then entry.strike:Hide() end
             entry.count:SetText("")
-            entry.count:SetTextColor(1, 1, 1, 1)
+            SetFontColor(entry.count, "shopping.itemText")
             if entry.countIcon then
               local _, _, _, _, _, _, _, _, _, commIcon = GetItemInfo(actionItemId)
               if not commIcon then
@@ -1190,9 +1203,9 @@ function WSGH.UI.Shopping.UpdateShoppingList()
             local purchaseTarget = tonumber(data.count) or 0
             local isFullyPurchased = (tonumber(data.bought) or 0) >= purchaseTarget and purchaseTarget > 0
             if isFullyPurchased then
-              entry.text:SetTextColor(0.72, 0.72, 0.72, 1)
+              SetFontColor(entry.text, "shopping.completedText")
             else
-              entry.text:SetTextColor(1, 1, 1, 1)
+              SetFontColor(entry.text, "shopping.itemText")
             end
             if entry.strike then entry.strike:Hide() end
             local totalNeeded = purchaseTarget
@@ -1249,9 +1262,9 @@ function WSGH.UI.Shopping.UpdateShoppingList()
               end
             end)
             if isFullyPurchased then
-              entry.count:SetTextColor(0.72, 0.72, 0.72, 1)
+              SetFontColor(entry.count, "shopping.completedText")
             else
-              entry.count:SetTextColor(1, 1, 1, 1)
+              SetFontColor(entry.count, "shopping.itemText")
             end
             entry.itemId = data.itemId
             entry:SetScript("OnEnter", function(self)

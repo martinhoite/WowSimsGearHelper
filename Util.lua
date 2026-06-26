@@ -187,7 +187,6 @@ function WSGH.Util.GetPreferences()
   if prefs.savedImportText == nil then prefs.savedImportText = nil end
   if prefs.showReforgeReminderAfterImport == nil then prefs.showReforgeReminderAfterImport = true end
   if prefs.showReforgeReminderOnRestore == nil then prefs.showReforgeReminderOnRestore = false end
-  if prefs.useOpaqueBackgroundForAllWindows == nil then prefs.useOpaqueBackgroundForAllWindows = false end
   if prefs.tinkers == nil then prefs.tinkers = {} end
   if prefs.highlightStyle == nil then
     prefs.highlightStyle = (WSGH.Const and WSGH.Const.HIGHLIGHT and WSGH.Const.HIGHLIGHT.style) or "label"
@@ -204,26 +203,197 @@ function WSGH.Util.GetPreferences()
   if prefs.useValorForUpgrades == nil then
     prefs.useValorForUpgrades = (prefs.upgradeCurrency == "VALOR")
   end
+  if type(prefs.colors) ~= "table" then
+    prefs.colors = {}
+  end
   prefs.taskPriorityOrder = WSGH.Util.NormalizeTaskPriorityOrder(prefs.taskPriorityOrder)
   WSGH.DB = _G.WowSimsGearHelperDB
   return prefs
 end
 
-local OPAQUE_WINDOW_COLOR = { 0.0235, 0.0314, 0.0510, 1 }
-
-function WSGH.Util.ShouldUseOpaqueWindowBackground(windowKind)
-  if windowKind == "help" or windowKind == "import" then
-    return true
+local function ClampColorChannel(value, fallback)
+  local n = tonumber(value)
+  if n == nil then
+    n = tonumber(fallback) or 0
   end
-
-  local prefs = WSGH.Util.GetPreferences()
-  return prefs and prefs.useOpaqueBackgroundForAllWindows == true or false
+  if n < 0 then return 0 end
+  if n > 1 then return 1 end
+  return n
 end
 
-function WSGH.Util.ApplyOpaqueWindowBackground(frame, windowKind, inset)
+local function CopyColor(color, fallback)
+  color = type(color) == "table" and color or {}
+  fallback = type(fallback) == "table" and fallback or { 1, 1, 1, 1 }
+  return {
+    ClampColorChannel(color.r or color[1], fallback.r or fallback[1]),
+    ClampColorChannel(color.g or color[2], fallback.g or fallback[2]),
+    ClampColorChannel(color.b or color[3], fallback.b or fallback[3]),
+    ClampColorChannel(color.a or color[4], fallback.a or fallback[4] or 1),
+  }
+end
+
+local function ColorsMatch(a, b)
+  a = CopyColor(a)
+  b = CopyColor(b)
+  for i = 1, 4 do
+    if math.abs((a[i] or 0) - (b[i] or 0)) > 0.001 then
+      return false
+    end
+  end
+  return true
+end
+
+function WSGH.Util.GetColorRoleGroups()
+  return WSGH.Const and WSGH.Const.COLOR_ROLES or {}
+end
+
+function WSGH.Util.GetDefaultColor(roleKey)
+  local defaults = WSGH.Const and WSGH.Const.COLOR_DEFAULTS or {}
+  return CopyColor(defaults and defaults[roleKey] or nil)
+end
+
+function WSGH.Util.GetColor(roleKey, fallback)
+  local defaultColor = WSGH.Util.GetDefaultColor(roleKey)
+  if fallback then
+    defaultColor = CopyColor(defaultColor, fallback)
+  end
+
+  local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
+  local storedColor = preferences and preferences.colors and preferences.colors[roleKey] or nil
+  if type(storedColor) == "table" then
+    return CopyColor(storedColor, defaultColor)
+  end
+  return defaultColor
+end
+
+function WSGH.Util.SetColor(roleKey, color)
+  if type(roleKey) ~= "string" or roleKey == "" then return end
+  local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
+  if not preferences then return end
+
+  preferences.colors = preferences.colors or {}
+  local normalized = CopyColor(color, WSGH.Util.GetDefaultColor(roleKey))
+  local defaultColor = WSGH.Util.GetDefaultColor(roleKey)
+  if ColorsMatch(normalized, defaultColor) then
+    preferences.colors[roleKey] = nil
+  else
+    preferences.colors[roleKey] = {
+      r = normalized[1],
+      g = normalized[2],
+      b = normalized[3],
+      a = normalized[4],
+    }
+  end
+end
+
+function WSGH.Util.ResetColor(roleKey)
+  local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
+  if preferences and preferences.colors then
+    preferences.colors[roleKey] = nil
+  end
+end
+
+function WSGH.Util.ResetAllColors()
+  local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
+  if preferences then
+    preferences.colors = {}
+  end
+end
+
+function WSGH.Util.HasCustomColors()
+  local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
+  if not (preferences and type(preferences.colors) == "table") then
+    return false
+  end
+  local defaults = WSGH.Const and WSGH.Const.COLOR_DEFAULTS or {}
+  for roleKey in pairs(preferences.colors) do
+    if defaults[roleKey] then
+      return true
+    end
+  end
+  return false
+end
+
+function WSGH.Util.SetTextColor(fontString, roleKey)
+  if not (fontString and fontString.SetTextColor) then return end
+  local color = WSGH.Util.GetColor(roleKey)
+  fontString:SetTextColor(color[1], color[2], color[3], color[4])
+end
+
+local buttonTextFontObjects = {}
+
+local function CopyFontObjectStyle(target, source)
+  if not (target and source) then return end
+  if target.SetFont and source.GetFont then
+    local font, size, flags = source:GetFont()
+    if font then
+      target:SetFont(font, size, flags)
+    end
+  end
+  if target.SetShadowColor and source.GetShadowColor then
+    target:SetShadowColor(source:GetShadowColor())
+  end
+  if target.SetShadowOffset and source.GetShadowOffset then
+    target:SetShadowOffset(source:GetShadowOffset())
+  end
+end
+
+local function GetButtonTextFontObject(button, roleKey)
+  local key = roleKey or "button.defaultText"
+  local fontObject = buttonTextFontObjects[key]
+  if not fontObject then
+    fontObject = CreateFont("WSGHButtonTextFont" .. key:gsub("[^%w]", "_"))
+    buttonTextFontObjects[key] = fontObject
+  end
+
+  local source = button
+    and button.GetFontString
+    and button:GetFontString()
+    or GameFontNormalSmall
+  CopyFontObjectStyle(fontObject, source)
+
+  local color = WSGH.Util.GetColor(key)
+  fontObject:SetTextColor(color[1], color[2], color[3], color[4])
+  return fontObject
+end
+
+function WSGH.Util.ApplyButtonTextColor(button, roleKey)
+  if not button then return end
+  local fontObject = GetButtonTextFontObject(button, roleKey)
+  if button.SetNormalFontObject then
+    button:SetNormalFontObject(fontObject)
+  end
+  if button.SetHighlightFontObject then
+    button:SetHighlightFontObject(fontObject)
+  end
+  if button.SetDisabledFontObject then
+    button:SetDisabledFontObject(fontObject)
+  end
+  if button.GetFontString and button:GetFontString() then
+    WSGH.Util.SetTextColor(button:GetFontString(), roleKey or "button.defaultText")
+  end
+end
+
+function WSGH.Util.SetTextureColor(texture, roleKey)
+  if not texture then return end
+  local color = WSGH.Util.GetColor(roleKey)
+  if texture.SetColorTexture then
+    texture:SetColorTexture(color[1], color[2], color[3], color[4])
+  elseif texture.SetVertexColor then
+    texture:SetVertexColor(color[1], color[2], color[3], color[4])
+  end
+end
+
+local function GetWindowBackgroundRole(windowKind)
+  if windowKind == "shoppingReminder" then
+    return "window.reminderBackground"
+  end
+  return "window.background"
+end
+
+function WSGH.Util.ApplyWindowBackground(frame, windowKind, inset)
   if not frame then return end
 
-  local useOpaque = WSGH.Util.ShouldUseOpaqueWindowBackground(windowKind)
   local background = frame.wsghOpaqueBackground
   if not background then
     background = frame:CreateTexture(nil, "BACKGROUND")
@@ -235,13 +405,13 @@ function WSGH.Util.ApplyOpaqueWindowBackground(frame, windowKind, inset)
   background:SetPoint("TOPLEFT", backgroundInset, -backgroundInset)
   background:SetPoint("BOTTOMRIGHT", -backgroundInset, backgroundInset)
   background:SetTexture("Interface\\Buttons\\WHITE8x8")
-  background:SetVertexColor(
-    OPAQUE_WINDOW_COLOR[1],
-    OPAQUE_WINDOW_COLOR[2],
-    OPAQUE_WINDOW_COLOR[3],
-    OPAQUE_WINDOW_COLOR[4]
-  )
-  background:SetShown(useOpaque)
+  local color = WSGH.Util.GetColor(GetWindowBackgroundRole(windowKind))
+  background:SetVertexColor(color[1], color[2], color[3], color[4])
+  background:SetShown((tonumber(color[4]) or 0) > 0)
+end
+
+function WSGH.Util.ApplyOpaqueWindowBackground(frame, windowKind, inset)
+  WSGH.Util.ApplyWindowBackground(frame, windowKind, inset)
 end
 
 function WSGH.Util.GetDefaultTinkerForSlot(slotId)

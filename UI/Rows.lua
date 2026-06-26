@@ -2,6 +2,31 @@ local WSGH = _G.WowSimsGearHelper
 WSGH.UI = WSGH.UI or {}
 WSGH.UI.Rows = WSGH.UI.Rows or {}
 
+local function GetColor(roleKey)
+  if WSGH.Util and WSGH.Util.GetColor then
+    return WSGH.Util.GetColor(roleKey)
+  end
+  return { 1, 1, 1, 1 }
+end
+
+local function SetFontColor(fontString, roleKey)
+  if not (fontString and fontString.SetTextColor) then return end
+  local color = GetColor(roleKey)
+  fontString:SetTextColor(color[1], color[2], color[3], color[4])
+end
+
+local function SetBackdropColor(frame, roleKey, borderRoleKey)
+  if not frame then return end
+  if frame.SetBackdropColor then
+    local color = GetColor(roleKey)
+    frame:SetBackdropColor(color[1], color[2], color[3], color[4])
+  end
+  if borderRoleKey and frame.SetBackdropBorderColor then
+    local borderColor = GetColor(borderRoleKey)
+    frame:SetBackdropBorderColor(borderColor[1], borderColor[2], borderColor[3], borderColor[4])
+  end
+end
+
 local function GetItemNameAndIcon(itemId)
   if not itemId or itemId == 0 then return nil, nil end
   local name, _, _, _, _, _, _, _, _, icon = GetItemInfo(itemId)
@@ -26,18 +51,12 @@ local function StatusIcon(status)
   return WSGH.Const.ICON_NOTREADY
 end
 
-local function SetActionButtonReforgeStyle(button, enabled)
+local function SetActionButtonStyle(button, textRoleKey)
   if not button then return end
-
-  if enabled then
-    if button.GetFontString and button:GetFontString() then
-      button:GetFontString():SetTextColor(1, 1, 1, 1)
-    end
-    return
-  end
-
-  if button.GetFontString and button:GetFontString() then
-    button:GetFontString():SetTextColor(1, 0.82, 0, 1)
+  if WSGH.Util and WSGH.Util.ApplyButtonTextColor then
+    WSGH.Util.ApplyButtonTextColor(button, textRoleKey or "button.defaultText")
+  elseif button.GetFontString and button:GetFontString() then
+    SetFontColor(button:GetFontString(), textRoleKey or "button.defaultText")
   end
 end
 
@@ -199,8 +218,6 @@ local function BuildCurrentGemLines(gemIds)
   return lines
 end
 
-local badgeCategoryColor = { 1, 0.82, 0 }
-local badgeTextColor = { 1, 1, 1 }
 local badgeTooltipTitleFont = nil
 local previousBadgeTooltipTitleFontObject = nil
 
@@ -255,14 +272,16 @@ end
 local function AddBadgeCategory(state, title, lines)
   if type(lines) ~= "table" or #lines == 0 then return false end
   state = state or {}
+  local categoryColor = GetColor("accent.gold")
+  local textColor = GetColor("text.normal")
   GameTooltip:AddLine(" ")
-  GameTooltip:AddLine(title, badgeCategoryColor[1], badgeCategoryColor[2], badgeCategoryColor[3])
+  GameTooltip:AddLine(title, categoryColor[1], categoryColor[2], categoryColor[3])
   for _, line in ipairs(lines) do
     local text = type(line) == "table" and line.text or tostring(line)
-    local r = type(line) == "table" and line.r or badgeTextColor[1]
-    local g = type(line) == "table" and line.g or badgeTextColor[2]
-    local b = type(line) == "table" and line.b or badgeTextColor[3]
-    GameTooltip:AddLine("  - " .. tostring(text), r or badgeTextColor[1], g or badgeTextColor[2], b or badgeTextColor[3], true)
+    local r = type(line) == "table" and line.r or textColor[1]
+    local g = type(line) == "table" and line.g or textColor[2]
+    local b = type(line) == "table" and line.b or textColor[3]
+    GameTooltip:AddLine("  - " .. tostring(text), r or textColor[1], g or textColor[2], b or textColor[3], true)
   end
   state.hasCategory = true
   return true
@@ -541,8 +560,7 @@ function WSGH.UI.Rows.Create(parent)
     edgeSize = 10,
     insets = { left = 2, right = 2, top = 2, bottom = 2 },
   })
-  rowFrame:SetBackdropColor(0, 0, 0, 0.18)
-  rowFrame:SetBackdropBorderColor(0, 0, 0, 0.35)
+  SetBackdropColor(rowFrame, "row.background", "row.border")
 
   rowFrame.action = CreateFrame("Button", nil, rowFrame, "UIPanelButtonTemplate")
   rowFrame.action:SetSize(80, 22)
@@ -636,6 +654,7 @@ function WSGH.UI.Rows.Create(parent)
   rowFrame.noSockets:SetPoint("RIGHT", rowFrame.socketsContainer, "RIGHT", 0, 0)
   rowFrame.noSockets:SetJustifyH("CENTER")
   rowFrame.noSockets:SetText("No sockets")
+  SetFontColor(rowFrame.noSockets, "text.muted")
 
   return rowFrame
 end
@@ -644,6 +663,7 @@ end
 
 function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   rowFrame.rowData = rowData
+  SetBackdropColor(rowFrame, "row.background", "row.border")
 
   local expectedItemId = tonumber(rowData.expectedItemId) or 0
   local equippedItemId = tonumber(rowData.equippedItemId) or 0
@@ -739,13 +759,13 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   local nextPriorityEnchantTask = priority and priority.nextEnchantTask or nil
 
   if rowData.rowStatus == "WRONG_ITEM" then
-    rowFrame.title:SetTextColor(1, 0.25, 0.25)
+    SetFontColor(rowFrame.title, "row.wrongItemTitle")
   elseif hasUpgradeWork then
-    rowFrame.title:SetTextColor(1, 0.62, 0.22)
+    SetFontColor(rowFrame.title, "row.upgradeTitle")
   elseif hasReforgeWork then
-    rowFrame.title:SetTextColor(0.8, 0.62, 1)
+    SetFontColor(rowFrame.title, "row.reforgeTitle")
   else
-    rowFrame.title:SetTextColor(1, 0.82, 0)
+    SetFontColor(rowFrame.title, "row.defaultTitle")
   end
 
   local importWarnings = rowData.importWarnings or {}
@@ -775,8 +795,9 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
   else
     statusText = ("%d tasks left"):format(remainingTaskCount)
   end
-  rowFrame.subtitle:SetTextColor(0.5, 0.5, 0.5)
+  SetFontColor(rowFrame.subtitle, "row.subtitle")
   rowFrame.subtitle:SetText(statusText)
+  SetFontColor(rowFrame.noSockets, "text.muted")
 
   local enchantDisplays = rowData.enchantDisplays or {}
   local showAmbiguousEnchantPlaceholder = hasEnchantOmissionWarning and #enchantDisplays == 0 and rowData.rowStatus ~= "WRONG_ITEM"
@@ -993,21 +1014,27 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
     rowFrame.noSockets:SetShown(socketCount == 0)
   end
 
-  rowFrame.action:SetScript("OnClick", function()
-    if onAction then onAction(rowData) end
-  end)
-  SetActionButtonReforgeStyle(rowFrame.action, false)
+  rowFrame.action:SetEnabled(true)
+  rowFrame.action:SetScript("OnEnter", nil)
+  rowFrame.action:SetScript("OnLeave", nil)
+  rowFrame.action:SetScript("OnClick", nil)
+  local actionIsClickable = true
+  local actionTextRole = "button.defaultText"
 
   if rowData.rowStatus == "OK" then
     rowFrame.action:SetEnabled(false)
+    actionIsClickable = false
     rowFrame.action:SetText("Done")
+    actionTextRole = "button.doneText"
   elseif rowData.rowStatus == "WRONG_ITEM" then
     if rowData.hasExpectedInBags then
       rowFrame.action:SetEnabled(true)
       rowFrame.action:SetText("Equip")
     else
       rowFrame.action:SetEnabled(false)
+      actionIsClickable = false
       rowFrame.action:SetText("Missing")
+      actionTextRole = "button.purchaseText"
     end
   else
     local hasBlockingTask = false -- e.g., gem/vellum missing from bags; user must acquire it first.
@@ -1039,7 +1066,9 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
 
     if isNextActionMissing or (not nextPriorityAction and hasBlockingTask) then
       rowFrame.action:SetEnabled(false)
+      actionIsClickable = false
       rowFrame.action:SetText("Purchase")
+      actionTextRole = "button.purchaseText"
       rowFrame.action:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Purchase required items first.")
@@ -1100,7 +1129,7 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
     elseif nextActionType == "REFORGE_ITEM" or (not nextActionType and hasPriorityReforge and not hasPriorityAnyEnchant and not hasPriorityUpgrade) then
       rowFrame.action:SetEnabled(true)
       rowFrame.action:SetText("Reforge*")
-      SetActionButtonReforgeStyle(rowFrame.action, true)
+      actionTextRole = "button.reforgeText"
       local firstReforgeTask = nextActionTask or (rowData.reforgeTasks and rowData.reforgeTasks[1] or nil)
       local reforgeText = firstReforgeTask and firstReforgeTask.wantReforgeText or nil
       if firstReforgeTask and (tonumber(firstReforgeTask.wantReforgeId) or 0) == 0 then
@@ -1130,4 +1159,12 @@ function WSGH.UI.Rows.SetRow(rowFrame, rowData, onAction)
       rowFrame.action:SetScript("OnLeave", nil)
     end
   end
+  if actionIsClickable then
+    rowFrame.action:SetScript("OnClick", function()
+      if onAction then onAction(rowData) end
+    end)
+  else
+    rowFrame.action:SetScript("OnClick", nil)
+  end
+  SetActionButtonStyle(rowFrame.action, actionTextRole)
 end
