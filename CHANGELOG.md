@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [1.4.0-beta.1] - 26 Jun, 2026
+## [1.4.0] - 14 Jul, 2026
 
 ### Added
 - Added a Colors settings section with focused previews, per-color help icons, swatches, preset dropdowns, per-color resets, and a confirmed reset-all action.
