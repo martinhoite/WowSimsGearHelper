@@ -18,6 +18,7 @@ Features
 - Optional ReforgeLite Classic import sync for WowSims reforges.
 - Bag/character slot highlighting to guide actions.
 - Live shopping list updates as items are bought / obtained from mailbox.
+- Customizable UI colors for buttons, windows, rows, shopping text, highlights, and settings states.
 - Built-in quick help plus a more detailed import walkthrough.
 
 Supported Bag Addons

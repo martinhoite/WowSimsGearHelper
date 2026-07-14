@@ -3,6 +3,13 @@ WSGH.UI = WSGH.UI or {}
 WSGH.UI.Highlight = WSGH.UI.Highlight or {}
 local LibCustomGlow = _G.LibStub and _G.LibStub("LibCustomGlow-1.0", true) or nil
 
+local function GetColor(roleKey)
+  if WSGH.Util and WSGH.Util.GetColor then
+    return WSGH.Util.GetColor(roleKey)
+  end
+  return { 1, 1, 1, 1 }
+end
+
 local HighlightState = {
   target = nil,
   targets = nil,
@@ -291,7 +298,8 @@ local function CreateIndicator(parent)
 
   local label = indicator:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
   label:SetPoint("TOPLEFT", indicator, "TOPLEFT", -8, 8)
-  label:SetTextColor(1, 1, 1, 1)
+  local numberColor = GetColor("highlight.number")
+  label:SetTextColor(numberColor[1], numberColor[2], numberColor[3], numberColor[4])
   local font, _, flags = label:GetFont()
   if font then
     label:SetFont(font, 18, flags or "OUTLINE")
@@ -299,7 +307,13 @@ local function CreateIndicator(parent)
   indicator.label = label
 
   local labelBg = indicator:CreateTexture(nil, "ARTWORK")
-  labelBg:SetColorTexture(0, 0, 0, 0.85)
+  local numberBackgroundColor = GetColor("highlight.numberBackground")
+  labelBg:SetColorTexture(
+    numberBackgroundColor[1],
+    numberBackgroundColor[2],
+    numberBackgroundColor[3],
+    numberBackgroundColor[4]
+  )
   labelBg:SetPoint("TOPLEFT", label, "TOPLEFT", -2, 2)
   labelBg:SetPoint("BOTTOMRIGHT", label, "BOTTOMRIGHT", 2, -2)
   indicator.labelBg = labelBg
@@ -352,11 +366,12 @@ local function ResyncOverlayGlowProxy(parent, proxy)
 end
 
 local function BuildGlowColor()
-  local color = WSGH.Const and WSGH.Const.HIGHLIGHT and WSGH.Const.HIGHLIGHT.color or { 1, 0.8, 0.1 }
+  local color = GetColor("highlight.glow")
   local r = tonumber(color[1]) or 1
   local g = tonumber(color[2]) or 0.8
   local b = tonumber(color[3]) or 0.1
-  return { r, g, b, 1 }
+  local a = tonumber(color[4]) or 1
+  return { r, g, b, a }
 end
 
 local function StartAutoCastStyle(proxy, style)
@@ -398,7 +413,7 @@ local function ApplyHighlightStyle(parent, context, attemptsLeft)
   if style == "glow" then
     if LibCustomGlow and LibCustomGlow.ButtonGlow_Start then
       if proxy then
-        LibCustomGlow.ButtonGlow_Start(proxy)
+        LibCustomGlow.ButtonGlow_Start(proxy, BuildGlowColor())
         return
       end
     end
@@ -452,6 +467,17 @@ end
 
 local function SetIndicatorLabel(indicator, text)
   if not (indicator and indicator.label) then return end
+  local numberColor = GetColor("highlight.number")
+  indicator.label:SetTextColor(numberColor[1], numberColor[2], numberColor[3], numberColor[4])
+  if indicator.labelBg then
+    local numberBackgroundColor = GetColor("highlight.numberBackground")
+    indicator.labelBg:SetColorTexture(
+      numberBackgroundColor[1],
+      numberBackgroundColor[2],
+      numberBackgroundColor[3],
+      numberBackgroundColor[4]
+    )
+  end
   indicator.label:SetText(text or "")
   if text and text ~= "" then
     indicator.label:Show()
@@ -1536,6 +1562,18 @@ function WSGH.UI.Highlight.SetSocketHintTarget(itemId, slotId, extraItemId)
   HighlightState.socketHint.slotId = (slot ~= 0) and slot or nil
   ClearSocketHintIndicators()
   WSGH.UI.Highlight.Refresh()
+end
+
+function WSGH.UI.Highlight.ApplyPreview(parent, labelText)
+  if not parent then return end
+  ClearIndicator(parent)
+
+  local indicator = CreateIndicator(parent)
+  if not indicator then return end
+  ConfigureIndicatorForBag(indicator)
+  SetIndicatorLabel(indicator, labelText or "1")
+  indicator:Show()
+  ApplyHighlightStyle(parent, "bag", 0)
 end
 
 function WSGH.UI.Highlight.ClearAll()

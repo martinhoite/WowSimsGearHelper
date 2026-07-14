@@ -221,6 +221,79 @@ WSGH.Const.HIGHLIGHT = {
   },
 }
 
+WSGH.Const.COLOR_ROLES = {
+  {
+    heading = "Buttons",
+    roles = {
+      { key = "button.defaultText", label = "Active action text", default = { 1, 0.82, 0, 1 }, description = "Text on enabled row action buttons such as Socket, Equip, Enchant, Upgrade, and Add socket." },
+      { key = "button.reforgeText", label = "Reforge action text", default = { 1, 1, 1, 1 }, description = "Text on the Reforge* row action button." },
+      { key = "button.doneText", label = "Completed action text", default = { 0.72, 0.72, 0.72, 1 }, description = "Text on disabled Done buttons for rows with no remaining tasks." },
+      { key = "button.purchaseText", label = "Purchase action text", default = { 1, 0.82, 0, 1 }, description = "Text on disabled Purchase or Missing buttons when required items are not available." },
+    },
+  },
+  {
+    heading = "Window",
+    roles = {
+      { key = "window.background", label = "Window background", default = { 0.0235, 0.0314, 0.051, 0.88 }, description = "Backdrop color behind the main addon, import, help, and shopping windows." },
+      { key = "window.reminderBackground", label = "Reminder background", default = { 0, 0, 0, 0.75 }, description = "Backdrop color for the small manual reforge reminder popup." },
+      { key = "text.normal", label = "Main window text", default = { 1, 1, 1, 1 }, description = "Primary labels in the main addon window and settings controls." },
+      { key = "text.secondary", label = "Secondary window text", default = { 0.8, 0.8, 0.8, 1 }, description = "Supporting text such as bylines and less prominent labels." },
+      { key = "text.muted", label = "Muted window text", default = { 0.5, 0.5, 0.5, 1 }, description = "Disabled, empty, or low-emphasis text such as row subtitles and no-socket notes." },
+      { key = "accent.gold", label = "Header/accent text", default = { 1, 0.82, 0, 1 }, description = "Section headings and accent labels throughout the addon UI." },
+      { key = "status.warning", label = "Warning text", default = { 1, 0.82, 0.2, 1 }, description = "Warning text in rows, badges, shopping, and tooltips." },
+      { key = "status.error", label = "Error text", default = { 1, 0.2, 0.2, 1 }, description = "Error text for import problems and failed states." },
+    },
+  },
+  {
+    heading = "Rows",
+    roles = {
+      { key = "row.defaultTitle", label = "Default row title", default = { 1, 0.82, 0, 1 }, description = "Equipped-slot row title when the row has normal pending work." },
+      { key = "row.wrongItemTitle", label = "Wrong item title", default = { 1, 0.25, 0.25, 1 }, description = "Equipped-slot row title when the currently equipped item does not match the import." },
+      { key = "row.upgradeTitle", label = "Upgrade row title", default = { 1, 0.62, 0.22, 1 }, description = "Equipped-slot row title when item upgrades are pending." },
+      { key = "row.reforgeTitle", label = "Reforge row title", default = { 0.8, 0.62, 1, 1 }, description = "Equipped-slot row title when only reforge work remains." },
+      { key = "row.subtitle", label = "Row subtitle", default = { 0.5, 0.5, 0.5, 1 }, description = "Small status text under each equipped-slot row title." },
+      { key = "row.background", label = "Row background", default = { 0, 0, 0, 0.18 }, description = "Backdrop fill behind each equipped-slot row." },
+      { key = "row.border", label = "Row border", default = { 0, 0, 0, 0.35 }, description = "Border around each equipped-slot row." },
+    },
+  },
+  {
+    heading = "Shopping",
+    roles = {
+      { key = "shopping.header", label = "Shopping headers", default = { 1, 0.82, 0, 1 }, description = "Category headings in the shopping list window." },
+      { key = "shopping.itemText", label = "Shopping item text", default = { 1, 1, 1, 1 }, description = "Regular item names and counts in the shopping list." },
+      { key = "shopping.completedText", label = "Shopping completed text", default = { 0.72, 0.72, 0.72, 1 }, description = "Shopping-list entries that are already purchased or satisfied." },
+      { key = "shopping.warningText", label = "Shopping warning text", default = { 1, 0.2, 0.2, 1 }, description = "Warnings in the shopping list, such as missing or ambiguous purchase data." },
+      { key = "shopping.reminderText", label = "Reforge reminder text", default = { 1, 0.82, 0, 1 }, description = "Text shown in the manual reforge reminder popup." },
+    },
+  },
+  {
+    heading = "Highlights",
+    roles = {
+      { key = "highlight.glow", label = "Highlight glow", default = { 0.95, 0.95, 0.32, 1 }, description = "Glow color around highlighted bags, items, sockets, and equipment slots." },
+      { key = "highlight.number", label = "Highlight number", default = { 1, 1, 1, 1 }, description = "Number text on ordered bag/item/socket highlights." },
+      { key = "highlight.numberBackground", label = "Highlight number background", default = { 0, 0, 0, 0.85 }, description = "Small backdrop behind ordered highlight numbers." },
+    },
+  },
+  {
+    heading = "Settings",
+    roles = {
+      { key = "settings.dragRowBackground", label = "Dragged row background", default = { 0.2, 0.32, 0.42, 0.85 }, description = "Background for a task-priority row while it is being dragged in settings." },
+      { key = "settings.dragRowBorder", label = "Dragged row border", default = { 0.95, 0.85, 0.25, 1 }, description = "Border for a task-priority row while it is being dragged in settings." },
+      { key = "settings.idleRowBackground", label = "Idle row background", default = { 0.03, 0.03, 0.03, 0.45 }, description = "Background for task-priority rows while they are not being dragged." },
+      { key = "settings.idleRowBorder", label = "Idle row border", default = { 0.35, 0.35, 0.35, 1 }, description = "Border for task-priority rows while they are not being dragged." },
+    },
+  },
+}
+
+WSGH.Const.COLOR_DEFAULTS = {}
+for _, colorGroup in ipairs(WSGH.Const.COLOR_ROLES) do
+  for _, colorRole in ipairs(colorGroup.roles or {}) do
+    if colorRole.key then
+      WSGH.Const.COLOR_DEFAULTS[colorRole.key] = colorRole.default
+    end
+  end
+end
+
 WSGH.Const.ICON_EMPTY_SOCKET = "Interface\\ItemSocketingFrame\\UI-EmptySocket"
 WSGH.Const.TINKERS_KIT_ITEM_ID = 90146
 WSGH.Const.JUSTICE_POINTS_CURRENCY_ID = 395
@@ -278,6 +351,13 @@ WSGH.Const.UI = {
     categories = { "Gems", "Enchants", "Other" },
   },
   settings = {
+    scroll = {
+      childWidth = 640,
+      minChildHeight = 760,
+      bottomPadding = 36,
+      rightInset = 28,
+      mouseWheelStep = 36,
+    },
     taskPriority = {
       xOffset = 320,
       yOffset = -8,
@@ -295,6 +375,38 @@ WSGH.Const.UI = {
         tileSize = 16,
         edgeSize = 10,
         inset = 2,
+      },
+    },
+    colors = {
+      width = 560,
+      height = 820,
+      contentHeight = 800,
+      noteWidth = 520,
+      preview = { width = 540, height = 44, yOffset = -34 },
+      openWindowButton = { width = 92, height = 20, xOffset = -118, yOffset = 2 },
+      resetAllButton = { width = 104, height = 20, xOffset = -8, yOffset = 2 },
+      row = {
+        topOffset = -98,
+        headingGap = 20,
+        rowHeight = 24,
+        groupGap = 4,
+        labelX = 8,
+        labelYOffset = -2,
+        labelWidth = 170,
+        helpX = 166,
+        helpYOffset = -3,
+        helpWidth = 14,
+        helpHeight = 14,
+        swatchX = 184,
+        swatchWidth = 22,
+        swatchHeight = 18,
+        dropdownOffsetX = -10,
+        dropdownOffsetY = 2,
+        dropdownWidth = 112,
+        resetOffsetX = -6,
+        resetOffsetY = 2,
+        resetWidth = 44,
+        resetHeight = 20,
       },
     },
   },

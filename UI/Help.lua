@@ -120,8 +120,8 @@ function Help.EnsureDialog()
     insets = { left = 11, right = 12, top = 12, bottom = 11 },
   })
   table.insert(UISpecialFrames, "WowSimsGearHelperHelpDialog")
-  if WSGH.Util and WSGH.Util.ApplyOpaqueWindowBackground then
-    WSGH.Util.ApplyOpaqueWindowBackground(dialog, "help")
+  if WSGH.Util and WSGH.Util.ApplyWindowBackground then
+    WSGH.Util.ApplyWindowBackground(dialog, "help")
   end
 
   local title = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")

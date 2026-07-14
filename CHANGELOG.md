@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.0] - 14 Jul, 2026
+
+### Added
+- Added a Colors settings section with focused previews, per-color help icons, swatches, preset dropdowns, per-color resets, and a confirmed reset-all action.
+- Added customizable color roles for action button text presets, window backgrounds, row titles, shopping text, highlight glow/labels, and settings task-priority states.
+
+### Changed
+- Replaced the separate opaque-background setting with customizable window background colors.
+
+## [1.3.2] - 21 Jun, 2026
+
+### Added
+- MoP perfect uncommon gems now compare as equivalent to matching rare gem cuts when checking socketed gems.
+
 ## [1.3.1] - 18 Jun, 2026
 
 ### Fixed
