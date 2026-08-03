@@ -678,10 +678,17 @@ function WSGH.UI.Shopping.GetRowPurchaseNeeds(row, bagIndex, includeAvailable)
   return needs
 end
 
-local function GetUpgradeCurrencyConfig()
+local function GetUpgradeCurrencyMode()
   local preferences = WSGH.Util and WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or {}
-  local useValor = preferences and preferences.useValorForUpgrades == true
-  if useValor then
+  local mode = preferences and preferences.upgradeCurrencyMode or nil
+  if mode == "JUSTICE" or mode == "VALOR" then
+    return mode
+  end
+  return "AUTO"
+end
+
+local function GetUpgradeCurrencyConfig(currencyKey)
+  if currencyKey == "VALOR" then
     return {
       key = "VALOR",
       short = "VP",
@@ -700,6 +707,19 @@ local function GetUpgradeCurrencyConfig()
     commendationItemId = WSGH.Const.JUSTICE_POINTS_COMMENDATION_ITEM_ID,
     cap = 4000,
   }
+end
+
+local function GetCurrencyKeyForUpgradeTask(task)
+  local mode = GetUpgradeCurrencyMode()
+  if mode == "JUSTICE" or mode == "VALOR" then
+    return mode
+  end
+
+  local key = task and task.upgradeCurrencyKey or nil
+  if key == "VALOR" or key == "JUSTICE" then
+    return key
+  end
+  return "JUSTICE"
 end
 
 local function RefreshAfterPurchase()
@@ -842,7 +862,7 @@ function WSGH.UI.Shopping.UpdateShoppingList()
   local hasPendingEquipTasks = false
 
   if diff and diff.rows then
-    local upgradeStepsNeeded = 0
+    local upgradeStepsByCurrency = {}
     for _, row in ipairs(diff.rows) do
       if row.rowStatus == "WRONG_ITEM" then
         hasPendingEquipTasks = true
@@ -853,65 +873,70 @@ function WSGH.UI.Shopping.UpdateShoppingList()
 
       for _, task in ipairs(row.upgradeTasks or {}) do
         if task.status and task.status ~= WSGH.Const.STATUS_OK then
-          upgradeStepsNeeded = upgradeStepsNeeded + 1
+          local currencyKey = GetCurrencyKeyForUpgradeTask(task)
+          upgradeStepsByCurrency[currencyKey] = (upgradeStepsByCurrency[currencyKey] or 0) + 1
         end
       end
     end
 
-    if upgradeStepsNeeded > 0 then
-      local currencyConfig = GetUpgradeCurrencyConfig()
-      local commendationItemId = tonumber(currencyConfig.commendationItemId)
-      local commendationsInBags = CountItemInBags(commendationItemId, bagIndex)
-      local currencyAmount, currencyIcon = GetCurrencyAmountAndIcon(currencyConfig.currencyId)
-      local currencyPerUpgradeStep = tonumber(currencyConfig.perUpgradeStep)
-      local currencyCap = tonumber(currencyConfig.cap)
-      local currencyNeeded = upgradeStepsNeeded * currencyPerUpgradeStep
-      local currencyMissing = currencyNeeded - currencyAmount
-      if currencyMissing < 0 then currencyMissing = 0 end
+    local hasUpgradeSteps = false
+    local hasMissingJusticeCurrency = false
+    local currencyOrder = { "JUSTICE", "VALOR" }
+    for _, currencyKey in ipairs(currencyOrder) do
+      local upgradeStepsNeeded = tonumber(upgradeStepsByCurrency[currencyKey]) or 0
+      if upgradeStepsNeeded > 0 then
+        hasUpgradeSteps = true
+        local currencyConfig = GetUpgradeCurrencyConfig(currencyKey)
+        local commendationItemId = tonumber(currencyConfig.commendationItemId)
+        local commendationsInBags = CountItemInBags(commendationItemId, bagIndex)
+        local currencyAmount, currencyIcon = GetCurrencyAmountAndIcon(currencyConfig.currencyId)
+        local currencyPerUpgradeStep = tonumber(currencyConfig.perUpgradeStep)
+        local currencyCap = tonumber(currencyConfig.cap)
+        local currencyNeeded = upgradeStepsNeeded * currencyPerUpgradeStep
+        local currencyMissing = currencyNeeded - currencyAmount
+        if currencyMissing < 0 then currencyMissing = 0 end
 
-      local jpPerCommNonGuild = WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_NON_GUILD
-      local jpPerCommGuild = WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_GUILD
-      local valorPerJpComm = WSGH.Const.VALOR_POINTS_PER_JP_COMMENDATION
-      local isInGuild = (IsInGuild and IsInGuild()) and true or false
-      local jpPerComm = isInGuild and jpPerCommGuild or jpPerCommNonGuild
-      local neededComm = 0
-      local neededValor = 0
-      if currencyConfig.key == "JUSTICE" and currencyMissing > 0 then
-        neededComm = math.ceil(currencyMissing / math.max(jpPerComm, 1))
-        neededValor = neededComm * valorPerJpComm
-      end
+        local jpPerCommNonGuild = WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_NON_GUILD
+        local jpPerCommGuild = WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_GUILD
+        local valorPerJpComm = WSGH.Const.VALOR_POINTS_PER_JP_COMMENDATION
+        local isInGuild = (IsInGuild and IsInGuild()) and true or false
+        local jpPerComm = isInGuild and jpPerCommGuild or jpPerCommNonGuild
+        local neededComm = 0
+        local neededValor = 0
+        if currencyConfig.key == "JUSTICE" and currencyMissing > 0 then
+          neededComm = math.ceil(currencyMissing / math.max(jpPerComm, 1))
+          neededValor = neededComm * valorPerJpComm
+          hasMissingJusticeCurrency = true
+        end
 
-      if currencyMissing > 0 then
-        local bucket = itemsByCategory["Other"] or {}
-        itemsByCategory["Other"] = bucket
-        bucket[#bucket + 1] = {
-          isCurrency = true,
-          currencyKey = currencyConfig.key,
-          currencyShort = currencyConfig.short,
-          currencyId = currencyConfig.currencyId,
-          currencyAmount = currencyAmount,
-          currencyCap = currencyCap,
-          currencyIcon = currencyIcon,
-          upgradeStepsNeeded = upgradeStepsNeeded,
-          currencyNeeded = currencyNeeded,
-          currencyMissing = currencyMissing,
-          isInGuild = isInGuild,
-          jpPerComm = jpPerComm,
-          neededComm = neededComm,
-          neededValor = neededValor,
-          actionItemId = commendationItemId,
-          actionItemCount = commendationsInBags,
-          category = "Other",
-        }
+        if currencyMissing > 0 then
+          local bucket = itemsByCategory["Other"] or {}
+          itemsByCategory["Other"] = bucket
+          bucket[#bucket + 1] = {
+            isCurrency = true,
+            currencyKey = currencyConfig.key,
+            currencyShort = currencyConfig.short,
+            currencyId = currencyConfig.currencyId,
+            currencyAmount = currencyAmount,
+            currencyCap = currencyCap,
+            currencyIcon = currencyIcon,
+            upgradeStepsNeeded = upgradeStepsNeeded,
+            currencyNeeded = currencyNeeded,
+            currencyMissing = currencyMissing,
+            isInGuild = isInGuild,
+            jpPerComm = jpPerComm,
+            neededComm = neededComm,
+            neededValor = neededValor,
+            actionItemId = commendationItemId,
+            actionItemCount = commendationsInBags,
+            category = "Other",
+          }
+        end
       end
+    end
 
-      if currencyMissing <= 0 and jpHighlightItemId then
-        WSGH.UI.Shopping.ClearJPHighlight()
-      end
-    else
-      if jpHighlightItemId then
-        WSGH.UI.Shopping.ClearJPHighlight()
-      end
+    if (not hasUpgradeSteps or not hasMissingJusticeCurrency) and jpHighlightItemId then
+      WSGH.UI.Shopping.ClearJPHighlight()
     end
   end
 
@@ -1111,7 +1136,7 @@ function WSGH.UI.Shopping.UpdateShoppingList()
               end
             end
 
-            entry.search:SetShown(true)
+            entry.search:SetShown(actionItemId ~= 0)
             entry.search:SetEnabled(actionItemId ~= 0)
             entry.search.itemId = actionItemId
             entry.search:SetWidth(WSGH.Const.UI.shopping.searchButton.width)

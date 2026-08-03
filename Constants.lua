@@ -199,7 +199,7 @@ WSGH.Const.TASK_PRIORITY_TYPES = {
   {
     key = "UPGRADE_ITEM",
     label = "Upgrade items",
-    description = "Item upgrade tasks using the selected currency preference.",
+    description = "Item upgrade tasks using automatic or overridden currency rules.",
   },
   {
     key = "REFORGE_ITEM",
@@ -306,6 +306,23 @@ WSGH.Const.VALOR_POINTS_PER_JP_COMMENDATION = 125
 WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_NON_GUILD = 500
 WSGH.Const.JUSTICE_POINTS_PER_COMMENDATION_GUILD = 600
 
+WSGH.Const.UPGRADE_CURRENCY_MODES = {
+  { value = "AUTO", text = "Auto" },
+  { value = "JUSTICE", text = "Force Justice" },
+  { value = "VALOR", text = "Force Valor" },
+}
+WSGH.Const.SOO_NON_WARFORGED_BASE_ITEM_LEVELS = {
+  [528] = true, -- Celestials / Siege of Orgrimmar LFR
+  [540] = true, -- Siege of Orgrimmar Flexible
+  [553] = true, -- Siege of Orgrimmar Normal
+  [566] = true, -- Siege of Orgrimmar Heroic
+}
+WSGH.Const.SOO_WARFORGED_BASE_ITEM_LEVELS = {
+  [546] = true, -- Siege of Orgrimmar Flexible Warforged
+  [559] = true, -- Siege of Orgrimmar Normal Warforged
+  [572] = true, -- Siege of Orgrimmar Heroic Warforged
+}
+
 WSGH.Const.AUCTION_CHAT_POLL_INTERVAL_SECONDS = 0.5
 WSGH.Const.AUCTION_CHAT_RESYNC_HISTORY_LINES = 80
 
@@ -357,6 +374,10 @@ WSGH.Const.UI = {
       bottomPadding = 36,
       rightInset = 28,
       mouseWheelStep = 36,
+    },
+    upgradeCurrency = {
+      dropdownWidth = 180,
+      buttonWidth = 180,
     },
     taskPriority = {
       xOffset = 320,
