@@ -47,6 +47,30 @@ local function GetExpectedUpgradeStep(planSlot)
   return trailingNumber
 end
 
+local function GetBaseItemLevelForUpgrade(equippedSlot)
+  local itemLevel = tonumber(equippedSlot and equippedSlot.itemLevel) or 0
+  if itemLevel <= 0 then return 0 end
+
+  local upgradeLevel = tonumber(equippedSlot and equippedSlot.upgradeLevel) or 0
+  if upgradeLevel < 0 then upgradeLevel = 0 end
+  return itemLevel - (upgradeLevel * 4)
+end
+
+local function GetAutoUpgradeCurrencyForSlot(equippedSlot)
+  local baseItemLevel = GetBaseItemLevelForUpgrade(equippedSlot)
+  local currentItemLevel = tonumber(equippedSlot and equippedSlot.itemLevel) or 0
+  local nonWarforgedLevels = WSGH.Const and WSGH.Const.SOO_NON_WARFORGED_BASE_ITEM_LEVELS or {}
+  local warforgedLevels = WSGH.Const and WSGH.Const.SOO_WARFORGED_BASE_ITEM_LEVELS or {}
+
+  if warforgedLevels[baseItemLevel] then
+    return "JUSTICE", baseItemLevel, currentItemLevel, "SOO_WARFORGED"
+  end
+  if nonWarforgedLevels[baseItemLevel] then
+    return "VALOR", baseItemLevel, currentItemLevel, "SOO"
+  end
+  return "JUSTICE", baseItemLevel, currentItemLevel, "UNKNOWN"
+end
+
 local function MaxExpectedSocketIndex(planSlot)
   local maxIdx = tonumber(planSlot.expectedGemSocketCount) or 0
   for socketIndex in pairs(planSlot.expectedGemsByIndex or {}) do
@@ -367,6 +391,7 @@ local function BuildUpgradeTasksForSlot(planSlot, equippedSlot)
   local expectedUpgradeStep = GetExpectedUpgradeStep(planSlot)
   local currentUpgradeLevel = tonumber(equippedSlot.upgradeLevel) or 0
   local currentUpgradeMax = tonumber(equippedSlot.upgradeMax) or 0
+  local upgradeCurrencyKey, upgradeBaseItemLevel, upgradeItemLevel, upgradeCurrencySource = GetAutoUpgradeCurrencyForSlot(equippedSlot)
 
   if expectedItemId == 0 or equippedItemId ~= expectedItemId then
     return tasks
@@ -399,6 +424,10 @@ local function BuildUpgradeTasksForSlot(planSlot, equippedSlot)
       haveUpgradeStep = currentUpgradeLevel,
       wantUpgradeStep = step,
       upgradeMax = currentUpgradeMax,
+      upgradeCurrencyKey = upgradeCurrencyKey,
+      upgradeCurrencySource = upgradeCurrencySource,
+      upgradeBaseItemLevel = upgradeBaseItemLevel,
+      upgradeItemLevel = upgradeItemLevel,
       remainingSteps = remaining,
       status = WSGH.Const.STATUS_WRONG,
     }
@@ -699,6 +728,8 @@ function WSGH.Diff.Engine.Build(plan, equipped, bagIndex)
         expectedItemId = planSlot.expectedItemId,
         equippedItemId = eqSlot.itemId,
         equippedLink = eqSlot.itemLink,
+        equippedItemLevel = tonumber(eqSlot.itemLevel) or 0,
+        equippedBaseItemLevel = GetBaseItemLevelForUpgrade(eqSlot),
         bagLocations = bagIndex and bagIndex[planSlot.expectedItemId] or nil,
         hasExpectedInBags = bagIndex and bagIndex[planSlot.expectedItemId] and #bagIndex[planSlot.expectedItemId] > 0 or false,
 
@@ -814,10 +845,13 @@ function WSGH.Debug.DumpDiffRow(slotId)
       end
       if row.upgradeTasks then
         for _, t in ipairs(row.upgradeTasks) do
-          WSGH.Util.Print(("Upgrade task: have=%s want=%s target=%s status=%s"):format(
+          WSGH.Util.Print(("Upgrade task: have=%s want=%s target=%s currency=%s baseIlvl=%s source=%s status=%s"):format(
             tostring(t.haveUpgradeStep),
             tostring(t.wantUpgradeStep),
             tostring(t.targetUpgradeStep),
+            tostring(t.upgradeCurrencyKey),
+            tostring(t.upgradeBaseItemLevel),
+            tostring(t.upgradeCurrencySource),
             tostring(t.status)
           ))
         end

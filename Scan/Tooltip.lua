@@ -389,24 +389,104 @@ local function DetectTinkerFromLines(lines)
   return bestSpellId
 end
 
+local upgradeLinePattern -- false = unavailable, nil = not built yet, string = ready
+
+-- Builds a locale-agnostic Lua pattern from the client's own localized global
+-- string (e.g. "Upgrade Level: %s %d/%d" on enUS, but properly translated on
+-- every other client language, including ruRU). This avoids hardcoding any
+-- single language's tooltip text.
+local function BuildUpgradeLinePattern()
+  local fmt = _G.ITEM_UPGRADE_TOOLTIP_FORMAT_STRING
+  if type(fmt) ~= "string" or fmt == "" then return nil end
+
+  -- Escape Lua pattern "magic" characters, but deliberately skip "%" itself
+  -- so the %s/%d format markers below survive untouched.
+  local escaped = fmt:gsub("([%^%$%(%)%.%[%]%*%+%-%?])", "%%%1")
+  -- %s (e.g. an upgrade track name) is not something we need to capture.
+  escaped = escaped:gsub("%%s", ".-")
+  -- %d becomes a capture group; the two captures we get back (in order)
+  -- are always "current" and "max", regardless of whether %s is present.
+  escaped = escaped:gsub("%%d", "(%%d+)")
+  return escaped
+end
+
+local function GetUpgradeLinePattern()
+  if upgradeLinePattern == nil then
+    upgradeLinePattern = BuildUpgradeLinePattern() or false
+  end
+  return upgradeLinePattern or nil
+end
+
+local function GetUpgradeLevelLabels()
+  local locale = (type(GetLocale) == "function" and GetLocale()) or "enUS"
+  local labelsByLocale = WSGH.Data and WSGH.Data.UpgradeLevelLabelsByLocale or {}
+  local labels = labelsByLocale[locale]
+  if labels then return labels end
+  -- Unknown locale: fall back to enUS labels (better than nothing) plus
+  -- the generic lowercase check further down still applies.
+  return labelsByLocale.enUS or {}
+end
+
+local function MatchUpgradeLevelAfterLabel(line, label)
+  local labelStart, labelEnd = line:find(label, 1, true)
+  if not labelStart then return nil, nil end
+  local rest = line:sub(labelEnd + 1)
+  local cur, max = rest:match("(%d+)%s*/%s*(%d+)")
+  if cur and max then
+    return tonumber(cur), tonumber(max)
+  end
+  return nil, nil
+end
+
 local function DetectUpgradeLevelFromLines(lines)
   local bestCurrent = 0
   local bestMax = 0
   local found = false
 
+  local pattern = GetUpgradeLinePattern()
+  local labels = GetUpgradeLevelLabels()
+
   for _, line in ipairs(lines or {}) do
     if type(line) == "string" and line ~= "" then
-      local lowered = (WSGH.Util and WSGH.Util.SafeLower and WSGH.Util.SafeLower(line)) or line:lower()
-      if lowered:find("upgrade level", 1, true) then
-        local cur, max = line:match("(%d+)%s*/%s*(%d+)")
-        cur = tonumber(cur) or 0
-        max = tonumber(max) or 0
-        if max > 0 then
-          found = true
-          if max > bestMax or (max == bestMax and cur > bestCurrent) then
-            bestCurrent = cur
-            bestMax = max
+      local cur, max
+
+      -- Primary: match against the client's own localized format string,
+      -- when that global string is available on this client build.
+      if pattern then
+        local a, b = line:match(pattern)
+        if a and b then
+          cur, max = tonumber(a), tonumber(b)
+        end
+      end
+
+      -- Secondary: explicit per-locale label list.
+      if not cur then
+        for _, label in ipairs(labels) do
+          local a, b = MatchUpgradeLevelAfterLabel(line, label)
+          if a and b then
+            cur, max = a, b
+            break
           end
+        end
+      end
+
+      -- Tertiary: legacy enUS-only lowercase substring match, kept as a
+      -- last-resort safety net.
+      if not cur then
+        local lowered = (WSGH.Util and WSGH.Util.SafeLower and WSGH.Util.SafeLower(line)) or line:lower()
+        if lowered:find("upgrade level", 1, true) then
+          local c, m = line:match("(%d+)%s*/%s*(%d+)")
+          cur, max = tonumber(c), tonumber(m)
+        end
+      end
+
+      cur = cur or 0
+      max = max or 0
+      if max > 0 then
+        found = true
+        if max > bestMax or (max == bestMax and cur > bestCurrent) then
+          bestCurrent = cur
+          bestMax = max
         end
       end
     end

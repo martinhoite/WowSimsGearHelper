@@ -1082,30 +1082,56 @@ local function BuildOptionsPanel()
   end)
   minimapCheck:SetScript("OnLeave", GameTooltip_Hide)
 
-  local useValorCheck = CreateFrame("CheckButton", nil, optionsContent, "ChatConfigCheckButtonTemplate")
-  useValorCheck:SetPoint("TOPLEFT", minimapCheck, "BOTTOMLEFT", 0, -6)
-  useValorCheck.Text:SetText("Use Valor for upgrades")
-  useValorCheck:SetChecked(preferences.useValorForUpgrades == true)
-  useValorCheck:SetScript("OnClick", function(self)
-    local preferencesTable = GetPreferences()
-    if not preferencesTable then return end
-    local useValor = self:GetChecked() and true or false
-    preferencesTable.useValorForUpgrades = useValor
-    preferencesTable.upgradeCurrency = useValor and "VALOR" or "JUSTICE"
-    if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateShoppingList then
-      WSGH.UI.Shopping.UpdateShoppingList()
+  local upgradeCurrencyLabel = optionsContent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  upgradeCurrencyLabel:SetPoint("TOPLEFT", minimapCheck, "BOTTOMLEFT", 18, -10)
+  upgradeCurrencyLabel:SetText("Upgrade currency:")
+
+  local upgradeCurrencyDrop = CreateFrame("Frame", "WSGHUpgradeCurrencyMode", optionsContent, "UIDropDownMenuTemplate")
+  upgradeCurrencyDrop:SetPoint("TOPLEFT", upgradeCurrencyLabel, "BOTTOMLEFT", -16, -4)
+  local upgradeCurrencyLayout = WSGH.Const.UI.settings.upgradeCurrency or {}
+  UIDropDownMenu_SetWidth(upgradeCurrencyDrop, tonumber(upgradeCurrencyLayout.dropdownWidth) or 180)
+  UIDropDownMenu_SetButtonWidth(upgradeCurrencyDrop, tonumber(upgradeCurrencyLayout.buttonWidth) or 180)
+
+  UIDropDownMenu_Initialize(upgradeCurrencyDrop, function(_, level)
+    local preferencesTable = GetPreferences() or {}
+    local current = preferencesTable.upgradeCurrencyMode or "AUTO"
+    for _, opt in ipairs(WSGH.Const.UPGRADE_CURRENCY_MODES or {}) do
+      local info = UIDropDownMenu_CreateInfo()
+      info.text = opt.text
+      info.value = opt.value
+      info.func = function()
+        UIDropDownMenu_SetSelectedValue(upgradeCurrencyDrop, opt.value)
+        UIDropDownMenu_SetText(upgradeCurrencyDrop, opt.text)
+        preferencesTable.upgradeCurrencyMode = opt.value
+        preferencesTable.upgradeCurrency = opt.value
+        preferencesTable.useValorForUpgrades = opt.value == "VALOR"
+        if WSGH.UI and WSGH.UI.Shopping and WSGH.UI.Shopping.UpdateShoppingList then
+          WSGH.UI.Shopping.UpdateShoppingList()
+        end
+      end
+      info.checked = (opt.value == current)
+      UIDropDownMenu_AddButton(info, level)
     end
   end)
-  useValorCheck:SetScript("OnEnter", function(self)
+
+  local initialUpgradeCurrencyMode = preferences.upgradeCurrencyMode or "AUTO"
+  for _, opt in ipairs(WSGH.Const.UPGRADE_CURRENCY_MODES or {}) do
+    if opt.value == initialUpgradeCurrencyMode then
+      UIDropDownMenu_SetSelectedValue(upgradeCurrencyDrop, opt.value)
+      UIDropDownMenu_SetText(upgradeCurrencyDrop, opt.text)
+      break
+    end
+  end
+  upgradeCurrencyDrop:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText("Use Valor for upgrades", 1, 1, 1)
-    GameTooltip:AddLine("When enabled, shopping upgrade currency info uses Valor instead of Justice.", nil, nil, nil, true)
+    GameTooltip:SetText("Upgrade currency", 1, 1, 1)
+    GameTooltip:AddLine("Auto uses Valor for non-Warforged Siege of Orgrimmar items and Justice for Warforged items. Force a currency if Blizzard changes upgrade costs.", nil, nil, nil, true)
     GameTooltip:Show()
   end)
-  useValorCheck:SetScript("OnLeave", GameTooltip_Hide)
+  upgradeCurrencyDrop:SetScript("OnLeave", GameTooltip_Hide)
 
   local reforgeReminderCheck = CreateFrame("CheckButton", nil, optionsContent, "ChatConfigCheckButtonTemplate")
-  reforgeReminderCheck:SetPoint("TOPLEFT", useValorCheck, "BOTTOMLEFT", 0, -6)
+  reforgeReminderCheck:SetPoint("TOPLEFT", upgradeCurrencyDrop, "BOTTOMLEFT", -2, -10)
   reforgeReminderCheck.Text:SetText("Show manual reforge reminder after import")
   reforgeReminderCheck:SetChecked(preferences.showReforgeReminderAfterImport ~= false)
   reforgeReminderCheck:SetScript("OnClick", function(self)
