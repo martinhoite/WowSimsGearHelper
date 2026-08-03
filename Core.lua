@@ -35,7 +35,8 @@ local function EnsureDB()
       restoreWindowAfterReforgeNpc = false,
       tinkers = {},
       colors = {},
-      upgradeCurrency = "JUSTICE",
+      upgradeCurrency = "AUTO",
+      upgradeCurrencyMode = "AUTO",
       useValorForUpgrades = false,
       taskPriorityOrder = WSGH.Util.GetDefaultTaskPriorityOrder and WSGH.Util.GetDefaultTaskPriorityOrder() or {},
     }
@@ -52,8 +53,9 @@ local function EnsureDB()
   if type(prefs.colors) ~= "table" then prefs.colors = {} end
   if prefs.minimap == nil then prefs.minimap = { hide = false } end
   if prefs.minimap.hide == nil then prefs.minimap.hide = false end
-  if prefs.upgradeCurrency == nil then prefs.upgradeCurrency = "JUSTICE" end
-  if prefs.useValorForUpgrades == nil then prefs.useValorForUpgrades = (prefs.upgradeCurrency == "VALOR") end
+  if WSGH.Util.NormalizeUpgradeCurrencyPreferences then
+    WSGH.Util.NormalizeUpgradeCurrencyPreferences(prefs)
+  end
   if WSGH.Util.NormalizeTaskPriorityOrder then
     prefs.taskPriorityOrder = WSGH.Util.NormalizeTaskPriorityOrder(prefs.taskPriorityOrder)
   end

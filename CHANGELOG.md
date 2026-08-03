@@ -8,6 +8,9 @@ All notable changes to this project are documented in this file.
 - Added localized tooltip support for Russian clients when detecting item upgrade levels and engineering tinkers.
 - Upgrade level detection now prefers the client's localized tooltip format when Blizzard exposes it.
 
+### Fixed
+- Upgrade shopping now uses Valor for non-Warforged Siege of Orgrimmar items and Justice for Warforged items, with a manual currency override in settings (defaults to Auto).
+
 ## [1.4.0] - 14 Jul, 2026
 
 ### Added

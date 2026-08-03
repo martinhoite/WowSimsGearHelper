@@ -93,6 +93,23 @@ function WSGH.Util.NormalizeTaskPriorityOrder(order)
   return normalized
 end
 
+function WSGH.Util.NormalizeUpgradeCurrencyPreferences(prefs)
+  if type(prefs) ~= "table" then return "AUTO" end
+
+  local mode = prefs.upgradeCurrencyMode
+  if mode == nil then
+    mode = "AUTO"
+  end
+  if mode ~= "AUTO" and mode ~= "JUSTICE" and mode ~= "VALOR" then
+    mode = "AUTO"
+  end
+
+  prefs.upgradeCurrencyMode = mode
+  prefs.upgradeCurrency = mode
+  prefs.useValorForUpgrades = mode == "VALOR"
+  return mode
+end
+
 function WSGH.Util.GetTaskPriorityOrder()
   local preferences = WSGH.Util.GetPreferences and WSGH.Util.GetPreferences() or nil
   return WSGH.Util.NormalizeTaskPriorityOrder(preferences and preferences.taskPriorityOrder or nil)
@@ -197,11 +214,8 @@ function WSGH.Util.GetPreferences()
   if prefs.minimap.hide == nil then
     prefs.minimap.hide = false
   end
-  if prefs.upgradeCurrency == nil then
-    prefs.upgradeCurrency = "JUSTICE"
-  end
-  if prefs.useValorForUpgrades == nil then
-    prefs.useValorForUpgrades = (prefs.upgradeCurrency == "VALOR")
+  if WSGH.Util.NormalizeUpgradeCurrencyPreferences then
+    WSGH.Util.NormalizeUpgradeCurrencyPreferences(prefs)
   end
   if type(prefs.colors) ~= "table" then
     prefs.colors = {}
