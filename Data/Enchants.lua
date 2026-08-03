@@ -430,6 +430,16 @@ WSGH.Data.TinkerTooltipTextByLocale = {
     [126731] = { "synapse springs", "Your highest stat is always chosen" },
     [1250229] = { "synapse springs", "Your highest stat is always chosen" },
   },
+  -- Verified against live ruRU (Cataclysm/MoP Classic) tooltips. Case is
+  -- intentional/preserved as shown in-game: Lua's string.lower() does not
+  -- fold Cyrillic casing, so matches must use the exact capitalization
+  -- Blizzard displays (these all start mid-sentence after "Использование:").
+  ruRU = {
+    [55016] = { "Значительно повышает вашу скорость бега" }, -- Nitro Boosts
+    [126392] = { "Уменьшает вашу скорость падения" }, -- Goblin Glider
+    [126731] = { "какой из этих показателей наивысший" }, -- Synapse Springs (Mark II)
+    [1250229] = { "какой из этих показателей наивысший" }, -- Synapse Springs (Mark I)
+  },
 }
 
 -- Enchants applied via non-vellum consumables (e.g., armor kits, inscriptions).
@@ -676,5 +686,3 @@ function Enchants.GetDisplayInfo(enchantId)
 end
 
 WSGH.Data.Enchants = Enchants
-
-
