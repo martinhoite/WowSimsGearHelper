@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.1] - 03 Aug, 2026
+
+### Added
+- Added localized tooltip support for Russian clients when detecting item upgrade levels and engineering tinkers.
+- Upgrade level detection now prefers the client's localized tooltip format when Blizzard exposes it.
+
 ## [1.4.0] - 14 Jul, 2026
 
 ### Added

@@ -59,9 +59,13 @@ Please use GitHub Issues and include as much context as possible.
 
 Limitations
 -----------
-- At this time I only support the English client and language. If Blizzard decides to continue into Warlords of Draenor, I'll likely extend with additional locale support.
+- English clients are fully supported, and Russian clients have localized tooltip support for upgrade levels and engineering tinkers. Support for more locales is welcome; please open a feature request with your game client locale, and I'll follow up with the exact tooltip text needed.
 - Reforging is handled by syncing to ReforgeLite Classic when it is installed and enabled; WSGH only guides and confirms from item links.
 - The addon follows the data you import and attempts to flag issues, but you should still verify the result yourself.
+
+Contributors
+------------
+- **Webbuster** from Discord provided the Russian tooltip phrases used to detect item upgrade levels, Nitro Boosts, Goblin Glider, and Synapse Springs.
 
 Attribution
 -----------
